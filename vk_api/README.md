@@ -6,5 +6,5 @@ Version is equal to the Vulkan version exposed - i.e. vk_api 1.0.0 exposes the v
 
 ```toml
 [build-dependencies]
-vk_api = "1.0.0"
+vk_api = "1.0.6"
 ```
