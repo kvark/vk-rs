@@ -1,0 +1,2 @@
+/// The contents of [`vk.xml`](https://github.com/KhronosGroup/Vulkan-Docs/blob/d204ac2f6991f75fab2ebc22136fd179d692f84f/src/spec/vk.xml)
+pub const VK_XML: &'static [u8] = include_bytes!("../Vulkan-Docs/src/spec/vk.xml");
