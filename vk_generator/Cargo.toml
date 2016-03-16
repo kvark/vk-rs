@@ -13,3 +13,7 @@ exclude = [
     "./Cargo.lock",
     "./target"
 ]
+
+[dependencies]
+vk_api = "=1.0.6"
+xml-rs = "0.3.0"

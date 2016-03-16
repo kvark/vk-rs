@@ -1,2 +1,3 @@
 target
 vk_api/Cargo.lock
+vk_generator/output.txt
