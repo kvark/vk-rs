@@ -61,7 +61,7 @@ enum XmlElement {
         /// The name of the tag e.g. "hello" in <hello>
         name: String,
         /// The attributes contained within the specification xml.
-        attributes: Vec<VkAttribute>
+        attributes: Vec<OwnedAttribute>
     },
     Characters( String )
 }
@@ -70,17 +70,7 @@ impl XmlElement {
     fn new_tag(name: OwnedName, attributes: Vec<OwnedAttribute>) -> XmlElement {
         XmlElement::Tag {
             name: name.local_name,
-            attributes: attributes.into_iter().map(
-                |a| VkAttribute {
-                    name: a.name.local_name,
-                    value: a.value
-                }).collect()
+            attributes: attributes
         }
     }
-}
-
-#[derive(Debug)]
-struct VkAttribute{
-    name: String,
-    value: String
 }
