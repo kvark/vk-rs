@@ -1,0 +1,15 @@
+[package]
+name = "vk_generator"
+version = "0.0.1"
+authors = ["Osspial <osspial@gmail.com>"]
+
+description = "Generates Rust bindings to the Vulkan API. Currently being developed and reserved for future use."
+repository = "https://github.com/Osspial/vk-rs"
+
+keywords = ["vulkan", "khronos"]
+license = "MIT"
+
+exclude = [
+    "./Cargo.lock",
+    "./target"
+]
