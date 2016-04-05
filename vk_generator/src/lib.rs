@@ -7,6 +7,7 @@ use xml::EventReader;
 use xml::attribute::OwnedAttribute;
 
 use std::os::raw::c_char;
+use std::ptr;
 
 pub fn load_xml() {
     let vk_xml = EventReader::new(vk_api::VK_XML);
@@ -35,7 +36,7 @@ impl<'a> VkRegistry {
     }
 
     /// Append a given attribute to the internal string buffer and return a pointer to a CStr that represents the attribute
-    fn append_str<'s>(&mut self, string: &str) -> *const c_char {
+    fn append_str(&mut self, string: &str) -> *const c_char {
         // We want to have all of the string in one block of memory in order to save heap allocation time. 
         self.string_buffer.push_str(string);
         self.string_buffer.push('\0');
@@ -45,9 +46,79 @@ impl<'a> VkRegistry {
 }
 
 #[derive(Debug)]
+enum VkFieldType {
+    Var(*const c_char),
+    Ptr(*const c_char),
+    PtrMut(*const c_char),
+    /// Default value to initialize with.
+    Unknown
+}
+
+#[derive(Debug)]
 struct VkField {
-    field_type: *const c_char,
-    field_name: *const c_char
+    field_type: VkFieldType,
+    field_name: *const c_char,
+}
+
+impl VkField {
+    fn empty() -> VkField {
+        VkField {
+            field_type: VkFieldType::Unknown,
+            field_name: ptr::null()
+        }
+    }
+
+    fn set_type(&mut self, field_type: *const c_char) {
+        use VkFieldType::*;
+        match self.field_type {
+            Var(ref mut s) |
+            Ptr(ref mut s) |
+            PtrMut(ref mut s) => 
+                if *s == ptr::null() {
+                    *s = field_type
+                } else {panic!("Field type already set")},
+            Unknown => self.field_type = Var(field_type)
+
+        }
+    }
+
+    fn change_type_var(&mut self) {
+        use VkFieldType::*;
+        match self.field_type {
+            Var(s) |
+            Ptr(s) |
+            PtrMut(s) => self.field_type = Var(s),
+            Unknown   => self.field_type = Var(ptr::null())
+        }
+    }
+
+    fn change_type_ptr(&mut self) {
+        use VkFieldType::*;
+        match self.field_type {
+            Var(s) |
+            Ptr(s) |
+            PtrMut(s) => self.field_type = Ptr(s),
+            Unknown   => self.field_type = Ptr(ptr::null())
+        }
+    }
+
+    fn change_type_ptr_mut(&mut self) {
+        use VkFieldType::*;
+        match self.field_type {
+            Var(s) |
+            Ptr(s) |
+            PtrMut(s) => self.field_type = PtrMut(s),
+            Unknown   => self.field_type = PtrMut(ptr::null())
+        }
+    }
+
+    fn set_name(&mut self, field_name: *const c_char) {
+        if field_name != ptr::null() {
+            panic!("Unexpected \"name\" tag");
+        } else {
+            self.field_name = field_name;
+        }
+    }
 }
 
 /// A variant of a vulkan enum
@@ -62,6 +133,11 @@ enum VkType {
     Struct {
         name: *const c_char,
         fields: Vec<VkField>
+    },
+
+    Union {
+        name: *const c_char,
+        variants: Vec<VkField>
     },
 
     Enum {
