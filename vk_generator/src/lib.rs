@@ -7,7 +7,9 @@ use xml::EventReader;
 use xml::attribute::OwnedAttribute;
 
 use std::os::raw::c_char;
+use std::ffi::CStr;
 use std::ptr;
+use std::fmt;
 
 pub fn load_xml() {
     let vk_xml = EventReader::new(vk_api::VK_XML);
@@ -45,13 +47,32 @@ impl<'a> VkRegistry {
     }
 }
 
-#[derive(Debug)]
 enum VkFieldType {
     Var(*const c_char),
     Ptr(*const c_char),
     PtrMut(*const c_char),
     /// Default value to initialize with.
     Unknown
+}
+
+impl fmt::Debug for VkFieldType {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        use VkFieldType::*;
+        if let Unknown = *self {
+            write!(fmt, "Unknown")
+        } else {
+            let pt;
+            fmt.debug_tuple(
+                match *self {
+                    Var(p) => {pt = p; "Var"}
+                    Ptr(p) => {pt = p; "Ptr"}
+                    PtrMut(p) => {pt = p; "PtrMut"}
+                    Unknown => unreachable!()
+                })
+                .field(unsafe{ &if pt != ptr::null() {CStr::from_ptr(pt).to_str().unwrap()} else {"Error: Null Ptr"} })
+                .finish()
+        }
+    }
 }
 
 #[derive(Debug)]
