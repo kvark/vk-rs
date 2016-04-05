@@ -3,33 +3,47 @@
 * types
     * category
         * basetype
-            * XML: <type category="basetype">typedef <type>uint32_t</type> <name>VkSampleMask</name>;</type>
-            * C: typedef uint32_t VkSampleMask;
-            * Rust: type VkSampleMask = uint32_t;
+            * XML: `<type category="basetype">typedef <type>uint32_t</type> <name>VkSampleMask</name>;</type>`
+            * C: `typedef uint32_t VkSampleMask;`
+            * Rust: `type VkSampleMask = uint32_t;`
         * bitmask
-            * XML: <type category="bitmask">typedef <type>VkFlags</type> <name>VkFramebufferCreateFlags</name>;</type>
-            * C: typedef VkFlags VkFramebufferCreateFlags;
-            * Rust: type VkFramebufferCreateFlags = VkFlags;
+            * XML: `<type category="bitmask">typedef <type>VkFlags</type> <name>VkFramebufferCreateFlags</name>;</type>`
+            * C: `typedef VkFlags VkFramebufferCreateFlags;`
+            * Rust: `type VkFramebufferCreateFlags = VkFlags;`
         * define
-            * XML: <type category="define">#define <name>VK_MAKE_VERSION</name>(major, minor, patch) \
+            * XML:
+   
+              ```xml
+              <type category="define">#define <name>VK_MAKE_VERSION</name>(major, minor, patch) \
                     (((major) &lt;&lt; 22) | ((minor) &lt;&lt; 12) | (patch))</type>
-            * C: #define VK_MAKE_VERSION(major, minor, patch) \
-                     (((major) << 22) | ((minor) << 12) | (patch))
+              ```
+            * C: 
+            
+              ```c
+              #define VK_MAKE_VERSION(major, minor, patch) \
+                  (((major) << 22) | ((minor) << 12) | (patch))
+              ```
             * Rust:
+            
+              ```rust
                 macro_rules! VK_MAKE_VERSION {
                     ($major:expr, $minor: expr, $patch:expr) => {
                         ((($major) << 22) | (($minor) << 12) | ($patch))
                     }
                 }
+              ```
 
-            * XML: <type category="define">#define <name>VK_NULL_HANDLE</name> 0</type>
-            * C: #define VK_NULL_HANDLE 0
+            * XML: `<type category="define">#define <name>VK_NULL_HANDLE</name> 0</type>`
+            * C: `#define VK_NULL_HANDLE 0`
             * Rust:
+            
+              ```rust
                 macro_rules! VK_NULL_HANDLE {
                     () => {
                         0
                     }
                 }
+              ```
 
             * If macro cannot be translated or has conditionals, abort macro creation and attempt to build rest of document.
             * If the macro is used elsewhere in the XML file, evaluate it when building rust bindings. Otherwise, translate it
@@ -44,7 +58,9 @@
         * include
             * Ignored
         * struct
-            * XML: 
+            * XML:
+            
+                ```xml
                 <type category="struct" name="VkAttachmentDescription">
                     <member optional="true"><type>VkAttachmentDescriptionFlags</type> <name>flags</name></member>
                     <member><type>VkFormat</type>               <name>format</name></member>
@@ -56,7 +72,10 @@
                     <member><type>VkImageLayout</type>          <name>initialLayout</name></member>
                     <member><type>VkImageLayout</type>          <name>finalLayout</name></member>
                 </type>
+                ```
             * C:
+            
+                ```C
                 typedef struct VkAttachmentDescription {
                     VkAttachmentDescriptionFlags    flags;
                     VkFormat                        format;
@@ -68,7 +87,10 @@
                     VkImageLayout                   initialLayout;
                     VkImageLayout                   finalLayout;
                 } VkAttachmentDescription;
+                ```
             * Rust:
+            
+                ```rust
                 pub struct VkAttachmentDescription {
                     flags: VkAttachmentDescriptionFlags,
                     format: VkFormat,
@@ -80,20 +102,28 @@
                     initialLayout: VkImageLayout,
                     finalLayout: VkImageLayout,
                 }
+                ```
         * union
             * XML:
+                ```xml
                 <type category="union" name="VkClearColorValue" comment="// Union allowing specification of floating point, integer, or unsigned integer color data. Actual union selected is based on image/attachment being cleared.">
                     <member><type>float</type>                  <name>float32</name>[4]</member>
                     <member><type>int32_t</type>                <name>int32</name>[4]</member>
                     <member><type>uint32_t</type>               <name>uint32</name>[4]</member>
                 </type>
+                ```
             * C:
+            
+                ```C
                 typedef union VkClearColorValue {
                     float       float32[4];
                     int32_t     int32[4];
                     uint32_t    uint32[4];
                 } VkClearColorValue;
+                ```
             * Rust:
+            
+                ```rust
                 pub struct VkClearColorValue {
                     /// Represents the raw data. Because unions in C are untagged, we go through all of the union's
                     /// possible variants and check which one has the largest size. Because the maximum size, in this
@@ -144,3 +174,4 @@
                         union
                     }
                 }
+                ```
