@@ -78,10 +78,18 @@ impl fmt::Debug for VkMemberType {
     }
 }
 
-#[derive(Debug)]
 struct VkMember {
     field_type: VkMemberType,
     field_name: *const c_char,
+}
+
+impl fmt::Debug for VkMember {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        fmt .debug_struct("VkMember")
+            .field("type", &self.field_type)
+            .field("name", unsafe{ &CStr::from_ptr(self.field_name) })
+            .finish()
+    }
 }
 
 impl VkMember {
@@ -135,7 +143,7 @@ impl VkMember {
             Var(s) |
             Const(s) => self.field_type = Const(s),
             ConstPtr(s) |
-            MutPtr(s) => self.field_type = ConstPtr(s),
+            MutPtr(s) => panic!("Attempted changing mutability of pointer"),
             Unknown   => self.field_type = Const(ptr::null())
         }
     }
@@ -152,7 +160,7 @@ impl VkMember {
     }
 
     fn set_name(&mut self, field_name: *const c_char) {
-        if field_name != ptr::null() {
+        if self.field_name != ptr::null() {
             panic!("Unexpected \"name\" tag");
         } else {
             self.field_name = field_name;
