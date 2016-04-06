@@ -53,6 +53,8 @@ enum VkMemberType {
     Const(*const c_char),
     ConstPtr(*const c_char),
     MutPtr(*const c_char),
+    ConstArray(*const c_char, usize),
+    MutArray(*const c_char, usize),
     /// Default value to initialize with.
     Unknown
 }
@@ -64,16 +66,22 @@ impl fmt::Debug for VkMemberType {
             write!(fmt, "Unknown")
         } else {
             let pt;
-            fmt.debug_tuple(
+            let mut fmt_tuple = fmt.debug_tuple(
                 match *self {
                     Var(p) => {pt = p; "Var"}
                     Const(p) => {pt = p; "Const"}
                     ConstPtr(p) => {pt = p; "ConstPtr"}
                     MutPtr(p) => {pt = p; "MutPtr"}
+                    ConstArray(p, _) => {pt = p; "ConstArray"}
+                    MutArray(p, _) => {pt = p; "MutArray"}
                     Unknown => unreachable!()
-                })
-                .field(unsafe{ &if pt != ptr::null() {CStr::from_ptr(pt).to_str().unwrap()} else {"Error: Null Ptr"} })
-                .finish()
+                });
+            fmt_tuple.field(unsafe{ &if pt != ptr::null() {CStr::from_ptr(pt).to_str().unwrap()} else {"Error: Null Ptr"} });
+            match *self {
+                ConstArray(_, s) |
+                MutArray(_, s) => fmt_tuple.field(&s),
+                _ => &mut fmt_tuple
+            }.finish()
         }
     }
 }
@@ -106,7 +114,9 @@ impl VkMember {
             Var(s) |
             Const(s) |
             ConstPtr(s) |
-            MutPtr(s) => Some(s),
+            MutPtr(s) |
+            ConstArray(s, _) |
+            MutArray(s, _) => Some(s),
             Unknown => None
         }
     }
@@ -117,7 +127,9 @@ impl VkMember {
             Var(ref mut s) |
             Const(ref mut s) |
             ConstPtr(ref mut s) |
-            MutPtr(ref mut s) => 
+            MutPtr(ref mut s) | 
+            ConstArray(ref mut s, _) |
+            MutArray(ref mut s, _) => 
                 if *s == ptr::null() {
                     *s = field_type
                 } else {panic!("Field type already set")},
@@ -129,11 +141,8 @@ impl VkMember {
     fn change_type_var(&mut self) {
         use VkMemberType::*;
         match self.field_type {
-            Var(s) |
-            Const(s) |
-            ConstPtr(s) |
-            MutPtr(s) => self.field_type = Var(s),
-            Unknown   => self.field_type = Var(ptr::null())
+            Unknown   => self.field_type = Var(ptr::null()),
+            _ => panic!("Unexpected change type to var")
         }
     }
 
@@ -142,8 +151,10 @@ impl VkMember {
         match self.field_type {
             Var(s) |
             Const(s) => self.field_type = Const(s),
-            ConstPtr(s) |
-            MutPtr(s) => panic!("Attempted changing mutability of pointer"),
+            ConstPtr(_) |
+            MutPtr(_) => panic!("Attempted changing mutability of pointer"),
+            ConstArray(_, _) |
+            MutArray(_, _) => panic!("Attempted changing mutability of array"),
             Unknown   => self.field_type = Const(ptr::null())
         }
     }
@@ -151,12 +162,28 @@ impl VkMember {
     fn change_type_ptr(&mut self) {
         use VkMemberType::*;
         match self.field_type {
-            Const(s) |
-            ConstPtr(s) => self.field_type = ConstPtr(s),
-            Var(s) |
-            MutPtr(s) => self.field_type = MutPtr(s),
+            Var(s) => self.field_type = MutPtr(s),
+            Const(s) => self.field_type = ConstPtr(s),
+            MutPtr(_) |
+            ConstPtr(_) => panic!("Attempted to change type from pointer to pointer"),
+            ConstArray(_, _) |
+            MutArray(_, _) => panic!("Attempted to change type from array to pointer"),
             Unknown   => self.field_type = MutPtr(ptr::null())
         }
+    }
+
+    fn change_type_array(&mut self, size: usize) -> &mut VkMember {
+        use VkMemberType::*;
+        match self.field_type {
+            Var(s) => self.field_type = MutArray(s, size),
+            Const(s) => self.field_type = ConstArray(s, size),
+            MutPtr(_) |
+            ConstPtr(_) => panic!("Attempted to change type from pointer to array"),
+            ConstArray(_, _) |
+            MutArray(_, _) => panic!("Attempted to change type from array to array"),
+            Unknown => panic!("Attempted to change type to array without type identifier")
+        }
+        self
     }
 
     fn set_name(&mut self, field_name: *const c_char) {
