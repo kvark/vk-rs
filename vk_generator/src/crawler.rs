@@ -84,6 +84,19 @@ pub fn crawl<R: Read>(xml_events: Events<R>, mut registry: VkRegistry) -> VkRegi
                                             _ => ()
                                         }
                                     },
+                                "member" =>
+                                    if VkBlock::Types == cur_block {
+                                        match type_buffer {
+                                            VkType::Struct{fields: ref mut members, ..} |
+                                            VkType::Union{variants: ref mut members, ..} =>
+                                                match chars.trim() {
+                                                    "const" => members.last_mut().unwrap().change_type_const(),
+                                                    "*"     => members.last_mut().unwrap().change_type_ptr(),
+                                                    _       => ()
+                                                },
+                                            _ => ()
+                                        }
+                                    },
                                 _ => ()
                             }
                     }
