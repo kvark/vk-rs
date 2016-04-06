@@ -75,37 +75,25 @@ pub fn crawl<R: Read>(xml_events: Events<R>, mut registry: VkRegistry) -> VkRegi
                             },
 
                         Characters{ref chars, tag} =>
-                            match tag {
-                                "member" =>
-                                    if VkBlock::Types == cur_block {
-                                        match type_buffer {
-                                            VkType::Struct{fields: ref mut members, ..} |
-                                            VkType::Union{variants: ref mut members, ..} =>
+                            if VkBlock::Types == cur_block {
+                                match type_buffer {
+                                    VkType::Struct{fields: ref mut members, ..} |
+                                    VkType::Union{variants: ref mut members, ..} =>
+                                        match tag {
+                                            "member" =>
                                                 match chars.trim() {
                                                     "const" => members.last_mut().unwrap().change_type_const(),
                                                     "*"     => members.last_mut().unwrap().change_type_ptr(),
                                                     _       => ()
                                                 },
+                                            "type" =>
+                                                members.last_mut().unwrap().set_type(registry.append_str(&chars[..])),
+                                            "name" =>
+                                                members.last_mut().unwrap().set_name(registry.append_str(&chars[..])),
                                             _ => ()
-                                        }
-                                    },
-                                "type" =>
-                                    if VkBlock::Types == cur_block {
-                                        match type_buffer {
-                                            VkType::Struct{fields: ref mut members, ..} |
-                                            VkType::Union{variants: ref mut members, ..} => members.last_mut().unwrap().set_type(registry.append_str(&chars[..])),
-                                            _ => ()
-                                        }
-                                    },
-                                "name" =>
-                                    if VkBlock::Types == cur_block {
-                                        match type_buffer {
-                                            VkType::Struct{fields: ref mut members, ..} |
-                                            VkType::Union{variants: ref mut members, ..} => members.last_mut().unwrap().set_name(registry.append_str(&chars[..])),
-                                            _ => ()
-                                        }
-                                    },
-                                _ => ()
+                                        },
+                                    _ => ()
+                                }
                             }
                     }
                 }
