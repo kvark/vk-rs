@@ -64,8 +64,8 @@ pub fn crawl<R: Read>(xml_events: Events<R>, mut registry: VkRegistry) -> VkRegi
                                 "member" =>
                                     if VkBlock::Types == cur_block {
                                         match type_buffer {
-                                            VkType::Struct{fields: ref mut fields, ..} => fields.push(VkMember::empty()),
-                                            VkType::Union{variants: ref mut variants, ..} => variants.push(VkMember::empty()),
+                                            VkType::Struct{ref mut fields, ..} => fields.push(VkMember::empty()),
+                                            VkType::Union{ref mut variants, ..} => variants.push(VkMember::empty()),
                                             _ =>
                                                 panic!("Unexpected \"member\" tag found")
                                         }
@@ -74,7 +74,7 @@ pub fn crawl<R: Read>(xml_events: Events<R>, mut registry: VkRegistry) -> VkRegi
                                 _ => ()
                             },
 
-                        Characters{chars: ref chars, tag} =>
+                        Characters{ref chars, tag} =>
                             match tag {
                                 "type" =>
                                     if VkBlock::Types == cur_block {
@@ -113,14 +113,14 @@ pub fn crawl<R: Read>(xml_events: Events<R>, mut registry: VkRegistry) -> VkRegi
     for t in &registry.types {
         unsafe {
             match *t {
-                VkType::Struct{name, fields: ref fields} => {
+                VkType::Struct{name, ref fields} => {
                     println!("Struct {:?}", CStr::from_ptr(name));
 
                     for f in fields {
                         println!("type: {:?}", f.field_type);
                     }
                 }
-                VkType::Union{name, variants: ref variants} => {
+                VkType::Union{name, ref variants} => {
                     println!("Union {:?}", CStr::from_ptr(name));
 
                     for v in variants {
