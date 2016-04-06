@@ -79,7 +79,8 @@ pub fn crawl<R: Read>(xml_events: Events<R>, mut registry: VkRegistry) -> VkRegi
                                 "type" =>
                                     if VkBlock::Types == cur_block {
                                         match type_buffer {
-                                            VkType::Struct{ref mut fields, ..} => fields.last_mut().unwrap().set_type(registry.append_str(&chars[..])),
+                                            VkType::Struct{fields: ref mut members, ..} |
+                                            VkType::Union{variants: ref mut members, ..} => members.last_mut().unwrap().set_type(registry.append_str(&chars[..])),
                                             _ => ()
                                         }
                                     },
