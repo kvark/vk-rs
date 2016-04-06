@@ -47,7 +47,7 @@ impl<'a> VkRegistry {
     }
 }
 
-enum VkFieldType {
+enum VkMemberType {
     Var(*const c_char),
     Ptr(*const c_char),
     PtrMut(*const c_char),
@@ -55,9 +55,9 @@ enum VkFieldType {
     Unknown
 }
 
-impl fmt::Debug for VkFieldType {
+impl fmt::Debug for VkMemberType {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        use VkFieldType::*;
+        use VkMemberType::*;
         if let Unknown = *self {
             write!(fmt, "Unknown")
         } else {
@@ -76,21 +76,21 @@ impl fmt::Debug for VkFieldType {
 }
 
 #[derive(Debug)]
-struct VkField {
-    field_type: VkFieldType,
+struct VkMember {
+    field_type: VkMemberType,
     field_name: *const c_char,
 }
 
-impl VkField {
-    fn empty() -> VkField {
-        VkField {
-            field_type: VkFieldType::Unknown,
+impl VkMember {
+    fn empty() -> VkMember {
+        VkMember {
+            field_type: VkMemberType::Unknown,
             field_name: ptr::null()
         }
     }
 
     fn type_ptr(&self) -> Option<*const c_char> {
-        use VkFieldType::*;
+        use VkMemberType::*;
         match self.field_type {
             Var(s) |
             Ptr(s) |
@@ -100,7 +100,7 @@ impl VkField {
     }
 
     fn set_type(&mut self, field_type: *const c_char) {
-        use VkFieldType::*;
+        use VkMemberType::*;
         match self.field_type {
             Var(ref mut s) |
             Ptr(ref mut s) |
@@ -114,7 +114,7 @@ impl VkField {
     }
 
     fn change_type_var(&mut self) {
-        use VkFieldType::*;
+        use VkMemberType::*;
         match self.field_type {
             Var(s) |
             Ptr(s) |
@@ -124,7 +124,7 @@ impl VkField {
     }
 
     fn change_type_ptr(&mut self) {
-        use VkFieldType::*;
+        use VkMemberType::*;
         match self.field_type {
             Var(s) |
             Ptr(s) |
@@ -134,7 +134,7 @@ impl VkField {
     }
 
     fn change_type_ptr_mut(&mut self) {
-        use VkFieldType::*;
+        use VkMemberType::*;
         match self.field_type {
             Var(s) |
             Ptr(s) |
@@ -163,12 +163,12 @@ struct VkVariant {
 enum VkType {
     Struct {
         name: *const c_char,
-        fields: Vec<VkField>
+        fields: Vec<VkMember>
     },
 
     Union {
         name: *const c_char,
-        variants: Vec<VkField>
+        variants: Vec<VkMember>
     },
 
     Enum {

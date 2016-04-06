@@ -5,7 +5,7 @@ use xml::name::OwnedName;
 use xml::attribute::OwnedAttribute;
 use std::io::Read;
 use std::ffi::CStr;
-use {VkRegistry, VkType, VkField};
+use {VkRegistry, VkType, VkMember};
 use VkVariant;
 
 pub fn crawl<R: Read>(xml_events: Events<R>, mut registry: VkRegistry) -> VkRegistry {
@@ -64,8 +64,8 @@ pub fn crawl<R: Read>(xml_events: Events<R>, mut registry: VkRegistry) -> VkRegi
                                 "member" =>
                                     if VkBlock::Types == cur_block {
                                         match type_buffer {
-                                            VkType::Struct{fields: ref mut fields, ..} => fields.push(VkField::empty()),
-                                            VkType::Union{variants: ref mut variants, ..} => variants.push(VkField::empty()),
+                                            VkType::Struct{fields: ref mut fields, ..} => fields.push(VkMember::empty()),
+                                            VkType::Union{variants: ref mut variants, ..} => variants.push(VkMember::empty()),
                                             _ =>
                                                 panic!("Unexpected \"member\" tag found")
                                         }
