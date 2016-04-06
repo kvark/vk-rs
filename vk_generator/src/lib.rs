@@ -37,7 +37,8 @@ impl<'a> VkRegistry {
         }
     }
 
-    /// Append a given attribute to the internal string buffer and return a pointer to a CStr that represents the attribute
+    /// Append a given attribute to the internal string buffer and return a pointer to a
+    /// null-terminated string that represents the attribute
     fn append_str(&mut self, string: &str) -> *const c_char {
         // We want to have all of the string in one block of memory in order to save heap allocation time. 
         self.string_buffer.push_str(string);
@@ -49,8 +50,9 @@ impl<'a> VkRegistry {
 
 enum VkMemberType {
     Var(*const c_char),
-    Ptr(*const c_char),
-    PtrMut(*const c_char),
+    Const(*const c_char),
+    ConstPtr(*const c_char),
+    MutPtr(*const c_char),
     /// Default value to initialize with.
     Unknown
 }
@@ -65,8 +67,9 @@ impl fmt::Debug for VkMemberType {
             fmt.debug_tuple(
                 match *self {
                     Var(p) => {pt = p; "Var"}
-                    Ptr(p) => {pt = p; "Ptr"}
-                    PtrMut(p) => {pt = p; "PtrMut"}
+                    Const(p) => {pt = p; "Const"}
+                    ConstPtr(p) => {pt = p; "ConstPtr"}
+                    MutPtr(p) => {pt = p; "MutPtr"}
                     Unknown => unreachable!()
                 })
                 .field(unsafe{ &if pt != ptr::null() {CStr::from_ptr(pt).to_str().unwrap()} else {"Error: Null Ptr"} })
@@ -93,8 +96,9 @@ impl VkMember {
         use VkMemberType::*;
         match self.field_type {
             Var(s) |
-            Ptr(s) |
-            PtrMut(s) => Some(s),
+            Const(s) |
+            ConstPtr(s) |
+            MutPtr(s) => Some(s),
             Unknown => None
         }
     }
@@ -103,8 +107,9 @@ impl VkMember {
         use VkMemberType::*;
         match self.field_type {
             Var(ref mut s) |
-            Ptr(ref mut s) |
-            PtrMut(ref mut s) => 
+            Const(ref mut s) |
+            ConstPtr(ref mut s) |
+            MutPtr(ref mut s) => 
                 if *s == ptr::null() {
                     *s = field_type
                 } else {panic!("Field type already set")},
@@ -117,29 +122,32 @@ impl VkMember {
         use VkMemberType::*;
         match self.field_type {
             Var(s) |
-            Ptr(s) |
-            PtrMut(s) => self.field_type = Var(s),
+            Const(s) |
+            ConstPtr(s) |
+            MutPtr(s) => self.field_type = Var(s),
             Unknown   => self.field_type = Var(ptr::null())
+        }
+    }
+
+    fn change_type_const(&mut self) {
+        use VkMemberType::*;
+        match self.field_type {
+            Var(s) |
+            Const(s) => self.field_type = Const(s),
+            ConstPtr(s) |
+            MutPtr(s) => self.field_type = ConstPtr(s),
+            Unknown   => self.field_type = Const(ptr::null())
         }
     }
 
     fn change_type_ptr(&mut self) {
         use VkMemberType::*;
         match self.field_type {
+            Const(s) |
+            ConstPtr(s) => self.field_type = ConstPtr(s),
             Var(s) |
-            Ptr(s) |
-            PtrMut(s) => self.field_type = Ptr(s),
-            Unknown   => self.field_type = Ptr(ptr::null())
-        }
-    }
-
-    fn change_type_ptr_mut(&mut self) {
-        use VkMemberType::*;
-        match self.field_type {
-            Var(s) |
-            Ptr(s) |
-            PtrMut(s) => self.field_type = PtrMut(s),
-            Unknown   => self.field_type = PtrMut(ptr::null())
+            MutPtr(s) => self.field_type = MutPtr(s),
+            Unknown   => self.field_type = MutPtr(ptr::null())
         }
     }
 
