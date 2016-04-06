@@ -32,8 +32,8 @@ impl<'a> VkRegistry {
 
     fn push_type(&mut self, vk_type: VkType) -> Result<(), ()> {
         match vk_type {
-            VkType::None => Err(()),
-            vk_type      => {self.types.push(vk_type); Ok(())}
+            VkType::Unhandled => Err(()),
+            vk_type           => {self.types.push(vk_type); Ok(())}
         }
     }
 
@@ -86,6 +86,16 @@ impl VkField {
         VkField {
             field_type: VkFieldType::Unknown,
             field_name: ptr::null()
+        }
+    }
+
+    fn type_ptr(&self) -> Option<*const c_char> {
+        use VkFieldType::*;
+        match self.field_type {
+            Var(s) |
+            Ptr(s) |
+            PtrMut(s) => Some(s),
+            Unknown => None
         }
     }
 
@@ -173,6 +183,5 @@ enum VkType {
         name: *const c_char
     },
 
-    /// A dummy variant used to initialize the type creation system
-    None
+    Unhandled
 }

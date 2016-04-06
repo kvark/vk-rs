@@ -11,7 +11,7 @@ use VkVariant;
 pub fn crawl<R: Read>(xml_events: Events<R>, mut registry: VkRegistry) -> VkRegistry {
     use self::XmlElement::*;
 
-    let mut type_buffer = VkType::None;
+    let mut type_buffer = VkType::Unhandled;
     let mut cur_block = VkBlock::None;
     // A variable that contains what the index of the element in vk_elements that vk_elements was
     // popped to. Used to prevent the element iterator from going over elements that have already
@@ -31,60 +31,65 @@ pub fn crawl<R: Read>(xml_events: Events<R>, mut registry: VkRegistry) -> VkRegi
 
             XmlEvent::EndElement{ name } => {
                 for el in &vk_elements[popped_to..] {
-
                     match *el {
-                        Tag{name: ref tag_name, attributes: ref tag_attrs} => {
-                            match &**tag_name {
-                                "types" => cur_block = VkBlock::Types,
+                        Tag{name: ref tag_name, attributes: ref tag_attrs} => 
+                            match &tag_name[..] {
+                                "types"      => cur_block = VkBlock::Types,
+                                "enums"      => cur_block = VkBlock::Enums,
+                                "commands"   => cur_block = VkBlock::Commands,
+                                "extensions" => cur_block = VkBlock::Extensions,
 
                                 "type"  =>
-                                    match cur_block {
-                                        VkBlock::Types => {
-                                            if let Some(category) = find_attribute(tag_attrs, "category") {
-                                                registry.push_type(type_buffer).ok();
-                                                match category {
-                                                    "basetype"      => type_buffer = VkType::None,
-                                                    "bitmask"       => type_buffer = VkType::None,
-                                                    "define"        => type_buffer = VkType::None,
-                                                    "enum"          => type_buffer = VkType::None,
-                                                    "funcpointer"   => type_buffer = VkType::None,
-                                                    "group"         => type_buffer = VkType::None,
-                                                    "handle"        => type_buffer = VkType::None,
-                                                    "include"       => type_buffer = VkType::None,
-                                                    "struct"        => 
-                                                        type_buffer = VkType::Struct{name: registry.append_str(find_attribute(tag_attrs, "name").unwrap()), fields: Vec::with_capacity(8)},
-                                                    "union"         => 
-                                                        type_buffer = VkType::Union{name: registry.append_str(find_attribute(tag_attrs, "name").unwrap()), variants: Vec::with_capacity(8)},
-                                                    _               => panic!("Unexpected category")
-                                                }
-                                            } 
+                                    if VkBlock::Types == cur_block {
+                                        if let Some(category) = find_attribute(tag_attrs, "category") {
+                                            registry.push_type(type_buffer).ok();
+                                            match category {
+                                                "basetype"      => type_buffer = VkType::Unhandled,
+                                                "bitmask"       => type_buffer = VkType::Unhandled,
+                                                "define"        => type_buffer = VkType::Unhandled,
+                                                "enum"          => type_buffer = VkType::Unhandled,
+                                                "funcpointer"   => type_buffer = VkType::Unhandled,
+                                                "group"         => type_buffer = VkType::Unhandled,
+                                                "handle"        => type_buffer = VkType::Unhandled,
+                                                "include"       => type_buffer = VkType::Unhandled,
+                                                "struct"        => 
+                                                    type_buffer = VkType::Struct{name: registry.append_str(find_attribute(tag_attrs, "name").unwrap()), fields: Vec::with_capacity(8)},
+                                                "union"         => 
+                                                    type_buffer = VkType::Union{name: registry.append_str(find_attribute(tag_attrs, "name").unwrap()), variants: Vec::with_capacity(8)},
+                                                _               => panic!("Unexpected category")
+                                            }
                                         }
-                                        VkBlock::Enums => panic!("Unexpected \"type\" tag found in \"enums\" block"),
-                                        VkBlock::None => panic!("\"type\" tag found outside of \"types\" block")
-                                    },
+                                    } else {/*panic!("\"type\" tag found outside of \"types\" block")*/}, //TODO: implement fully so panic can be used
 
                                 "member" =>
-                                    match type_buffer {
-                                        VkType::Struct{fields: ref mut fields, ..} => fields.push(VkField::empty()),
-                                        VkType::Union{variants: ref mut variants, ..} => variants.push(VkField::empty()),
-                                        _ =>
-                                            panic!(format!("Unexpected \"member\" tag found; vk_elements state: {:#?}; type_buffer state: {:?}", vk_elements, type_buffer))
-                                    },
+                                    if VkBlock::Types == cur_block {
+                                        match type_buffer {
+                                            VkType::Struct{fields: ref mut fields, ..} => fields.push(VkField::empty()),
+                                            VkType::Union{variants: ref mut variants, ..} => variants.push(VkField::empty()),
+                                            _ =>
+                                                panic!("Unexpected \"member\" tag found")
+                                        }
+                                    } else {panic!("\"member\" tag found outside of \"types\" block")},
 
                                 _ => ()
-                            }
-                        }
+                            },
 
-                        Characters{..} => ()
+                        Characters{chars: ref chars, tag} =>
+                            match tag {
+                                "type" =>
+                                    if VkBlock::Types == cur_block {
+                                        match type_buffer {
+                                            VkType::Struct{ref mut fields, ..} => fields.last_mut().unwrap().set_type(registry.append_str(&chars[..])),
+                                            _ => ()
+                                        }
+                                    },
+                                _ => ()
+                            }
                     }
                 }
 
                 pop_element_stack(&mut vk_elements);
-                popped_to = 
-                    match vk_elements.len() {
-                        0 => 0,
-                        not0 => not0 - 1
-                    };
+                popped_to = vk_elements.len();
             }
 
             XmlEvent::Characters(chars) => {
@@ -104,7 +109,27 @@ pub fn crawl<R: Read>(xml_events: Events<R>, mut registry: VkRegistry) -> VkRegi
         }
     }
 
-    println!("{:#?}", (&registry.types).into_iter().map(|t| if let &VkType::Struct{name, ..} = t {Some(unsafe{ CStr::from_ptr(name) })} else {None}).collect::<Vec<_>>());
+    for t in &registry.types {
+        unsafe {
+            match *t {
+                VkType::Struct{name, fields: ref fields} => {
+                    println!("Struct {:?}", CStr::from_ptr(name));
+
+                    for f in fields {
+                        println!("type: {:?}", f.field_type);
+                    }
+                }
+                VkType::Union{name, variants: ref variants} => {
+                    println!("Union {:?}", CStr::from_ptr(name));
+
+                    for v in variants {
+                        println!("type: {:?}", v.field_type);
+                    }
+                }
+                _ => ()
+            }
+        }
+    }
 
     registry
 }
@@ -117,12 +142,12 @@ fn find_attribute<'v>(source: &'v Vec<OwnedAttribute>, query: &str) -> Option<&'
 /// it pops a Tag
 fn pop_element_stack(vk_elements: &mut Vec<XmlElement>) {
     match vk_elements.pop() {
-            Some(el) => 
-                if let XmlElement::Characters{..} = el {
-                    pop_element_stack(vk_elements)
-                },
+        Some(el) => 
+            if let XmlElement::Characters{..} = el {
+                pop_element_stack(vk_elements)
+            },
 
-            None => panic!("Invalid xml; Unexpected closing tag")
+        None => panic!("Invalid xml; Unexpected closing tag")
     }
 }
 
@@ -156,8 +181,11 @@ impl<'a> XmlElement<'a> {
     }
 }
 
+#[derive(Debug, PartialEq, Eq)]
 enum VkBlock {
     Types,
     Enums,
+    Commands,
+    Extensions,
     None
 }
