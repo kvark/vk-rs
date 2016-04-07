@@ -22,7 +22,6 @@ pub fn crawl<R: Read>(xml_events: Events<R>, mut registry: VkRegistry) -> VkRegi
     let mut vk_elements = Vec::with_capacity(10);
 
     for event in xml_events {
-        
         let event = event.unwrap();
         match event {
             XmlEvent::StartElement{ name, attributes, .. } => {
@@ -31,7 +30,7 @@ pub fn crawl<R: Read>(xml_events: Events<R>, mut registry: VkRegistry) -> VkRegi
 
             XmlEvent::EndElement{ name } => {
                 for el in &vk_elements[popped_to..] {
-                    use btypevalid::*;
+                    use tdvalid::*;
                     match *el {
                         Tag{name: ref tag_name, attributes: ref tag_attrs} => 
                             match &tag_name[..] {
@@ -45,8 +44,8 @@ pub fn crawl<R: Read>(xml_events: Events<R>, mut registry: VkRegistry) -> VkRegi
                                     if let Some(category) = find_attribute(tag_attrs, "category") {
                                         registry.push_type(type_buffer).ok();
                                         match category {
-                                            "basetype"      => type_buffer = VkType::empty_basetype(),
-                                            "bitmask"       => type_buffer = VkType::Unhandled,
+                                            "basetype"       |
+                                            "bitmask"       => type_buffer = VkType::empty_typedef(),
                                             "define"        => type_buffer = VkType::Unhandled,
                                             "enum"          => type_buffer = VkType::Unhandled,
                                             "funcpointer"   => type_buffer = VkType::Unhandled,
@@ -102,7 +101,7 @@ pub fn crawl<R: Read>(xml_events: Events<R>, mut registry: VkRegistry) -> VkRegi
                                         "enum"   => members.last_mut().unwrap().change_type_array_enum(registry.append_str(chars)),
                                         _        => ()
                                     },
-                                VkType::BaseType{ty: ref mut ty, 
+                                VkType::TypeDef{ty: ref mut ty, 
                                                  name: ref mut name, 
                                                  validity: ref mut validity} =>
                                     match tag {
@@ -158,11 +157,11 @@ pub fn crawl<R: Read>(xml_events: Events<R>, mut registry: VkRegistry) -> VkRegi
                         println!("\t{:?}", v);
                     }
                 }
-                VkType::BaseType{ty, name, validity} =>
+                VkType::TypeDef{ty, name, validity} =>
                     if validity != 0 {
-                        panic!("Invalid basetype")
+                        panic!("Invalid typedef")
                     } else {
-                        println!("Basetype {:?} {:?}", CStr::from_ptr(ty), CStr::from_ptr(name))
+                        println!("TypeDef {:?} {:?}", CStr::from_ptr(ty), CStr::from_ptr(name))
                     },
                 _ => ()
             }
