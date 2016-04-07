@@ -31,6 +31,7 @@ pub fn crawl<R: Read>(xml_events: Events<R>, mut registry: VkRegistry) -> VkRegi
 
             XmlEvent::EndElement{ name } => {
                 for el in &vk_elements[popped_to..] {
+                    use btypevalid::*;
                     match *el {
                         Tag{name: ref tag_name, attributes: ref tag_attrs} => 
                             match &tag_name[..] {
@@ -44,7 +45,7 @@ pub fn crawl<R: Read>(xml_events: Events<R>, mut registry: VkRegistry) -> VkRegi
                                     if let Some(category) = find_attribute(tag_attrs, "category") {
                                         registry.push_type(type_buffer).ok();
                                         match category {
-                                            "basetype"      => type_buffer = VkType::Unhandled,
+                                            "basetype"      => type_buffer = VkType::empty_basetype(),
                                             "bitmask"       => type_buffer = VkType::Unhandled,
                                             "define"        => type_buffer = VkType::Unhandled,
                                             "enum"          => type_buffer = VkType::Unhandled,
@@ -101,6 +102,19 @@ pub fn crawl<R: Read>(xml_events: Events<R>, mut registry: VkRegistry) -> VkRegi
                                         "enum"   => members.last_mut().unwrap().change_type_array_enum(registry.append_str(chars)),
                                         _        => ()
                                     },
+                                VkType::BaseType{ty: ref mut ty, 
+                                                 name: ref mut name, 
+                                                 validity: ref mut validity} =>
+                                    match tag {
+                                        "type" =>
+                                            match chars {
+                                                "typedef" => *validity ^= NOTYPEDEF,
+                                                ";"       => *validity ^= NOSEMICOLON,
+                                                _         => *ty = registry.append_str(chars)
+                                            },
+                                        "name" => *name = registry.append_str(chars),
+                                        _ => panic!("Unexpected tag")
+                                    },
                                 _ => ()
                             }
                         }
@@ -144,6 +158,12 @@ pub fn crawl<R: Read>(xml_events: Events<R>, mut registry: VkRegistry) -> VkRegi
                         println!("\t{:?}", v);
                     }
                 }
+                VkType::BaseType{ty, name, validity} =>
+                    if validity != 0 {
+                        panic!("Invalid basetype")
+                    } else {
+                        println!("Basetype {:?} {:?}", CStr::from_ptr(ty), CStr::from_ptr(name))
+                    },
                 _ => ()
             }
         }

@@ -261,7 +261,8 @@ enum VkType {
         /// The type that is being aliased
         ty: *const c_char,
         /// The name of the new type
-        name: *const c_char
+        name: *const c_char,
+        validity: u8
     },
 
     Unhandled
@@ -281,4 +282,18 @@ impl VkType {
             variants: variants
         }
     }
+
+    fn empty_basetype() -> VkType {
+        use btypevalid::*;
+        VkType::BaseType {
+            ty: ptr::null(),
+            name: ptr::null(),
+            validity: NOSEMICOLON | NOTYPEDEF
+        }
+    }
+}
+
+mod btypevalid {
+    pub const NOSEMICOLON: u8 = 0b01;
+    pub const NOTYPEDEF: u8   = 0b10;
 }
