@@ -257,6 +257,12 @@ enum VkType {
         variants: Vec<VkVariant>
     },
 
+    Handle {
+        name: *const c_char,
+        validity: bool,
+        dispatchable: bool
+    },
+
     TypeDef {
         /// The type that is being aliased
         ty: *const c_char,
@@ -283,6 +289,14 @@ impl VkType {
         }
     }
 
+    fn empty_handle() -> VkType {
+        VkType::Handle {
+            name: ptr::null(),
+            validity: false,
+            dispatchable: true
+        }
+    }
+
     fn empty_typedef() -> VkType {
         use tdvalid::*;
         VkType::TypeDef {
@@ -293,6 +307,7 @@ impl VkType {
     }
 }
 
+/// VkType::TypeDef validity flags
 mod tdvalid {
     pub const NOSEMICOLON: u8 = 0b01;
     pub const NOTYPEDEF: u8   = 0b10;

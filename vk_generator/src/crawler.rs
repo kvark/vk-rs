@@ -50,7 +50,7 @@ pub fn crawl<R: Read>(xml_events: Events<R>, mut registry: VkRegistry) -> VkRegi
                                             "enum"          => type_buffer = VkType::Unhandled,
                                             "funcpointer"   => type_buffer = VkType::Unhandled,
                                             "group"         => type_buffer = VkType::Unhandled,
-                                            "handle"        => type_buffer = VkType::Unhandled,
+                                            "handle"        => type_buffer = VkType::empty_handle(),
                                             "include"       => type_buffer = VkType::Unhandled,
                                             "struct"        => 
                                                 type_buffer = VkType::new_struct(registry.append_str(find_attribute(tag_attrs, "name").unwrap()), Vec::with_capacity(8)),
@@ -101,9 +101,9 @@ pub fn crawl<R: Read>(xml_events: Events<R>, mut registry: VkRegistry) -> VkRegi
                                         "enum"   => members.last_mut().unwrap().change_type_array_enum(registry.append_str(chars)),
                                         _        => ()
                                     },
-                                VkType::TypeDef{ty: ref mut ty, 
-                                                 name: ref mut name, 
-                                                 validity: ref mut validity} =>
+                                VkType::TypeDef{ref mut ty, 
+                                                ref mut name, 
+                                                ref mut validity} =>
                                     match tag {
                                         "type" =>
                                             match chars {
@@ -113,6 +113,21 @@ pub fn crawl<R: Read>(xml_events: Events<R>, mut registry: VkRegistry) -> VkRegi
                                             },
                                         "name" => *name = registry.append_str(chars),
                                         _ => panic!("Unexpected tag")
+                                    },
+                                VkType::Handle{ref mut name, 
+                                               ref mut validity, 
+                                               ref mut dispatchable} =>
+                                    match tag {
+                                        "type" =>
+                                            match chars {
+                                                "VK_DEFINE_HANDLE"                  =>  *validity = true,
+                                                "VK_DEFINE_NON_DISPATCHABLE_HANDLE" => {*validity = true; *dispatchable = false}
+                                                "(" |
+                                                ")" => (),
+                                                _                                   => panic!("Unexpected handle")
+                                            },
+                                        "name" => *name = registry.append_str(chars),
+                                        _ => ()
                                     },
                                 _ => ()
                             }
@@ -162,6 +177,14 @@ pub fn crawl<R: Read>(xml_events: Events<R>, mut registry: VkRegistry) -> VkRegi
                         panic!("Invalid typedef")
                     } else {
                         println!("TypeDef {:?} {:?}", CStr::from_ptr(ty), CStr::from_ptr(name))
+                    },
+                VkType::Handle{name, validity, dispatchable} =>
+                    if !validity {
+                        panic!("Invalid handle")
+                    } else if dispatchable {
+                        println!("Handle {:?}", CStr::from_ptr(name))
+                    } else {
+                        println!("Non-Dispatchable Handle {:?}", CStr::from_ptr(name))
                     },
                 _ => ()
             }
