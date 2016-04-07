@@ -40,9 +40,14 @@ impl<'a> VkRegistry {
     /// Append a given attribute to the internal string buffer and return a pointer to a
     /// null-terminated string that represents the attribute
     fn append_str(&mut self, string: &str) -> *const c_char {
+        let prepushcap = self.string_buffer.capacity();
         // We want to have all of the string in one block of memory in order to save heap allocation time. 
         self.string_buffer.push_str(string);
         self.string_buffer.push('\0');
+
+        if prepushcap != self.string_buffer.capacity() {
+            panic!("Allocation detected in string buffer")
+        }
 
         (self.string_buffer.as_ptr() as usize + self.string_buffer.len() - string.len() - 1) as *const c_char
     }
@@ -212,8 +217,8 @@ impl VkMember {
     fn change_type_array_enum(&mut self, size_enum: *const c_char) {
         use VkMemberType::*;
         match self.field_type {
-            Var(s)                      => panic!("Attempted to change type from var to array[enum]"),
-            Const(s)                    => panic!("Attempted to change type from const to array[enum]"),
+            Var(_)                      => panic!("Attempted to change type from var to array[enum]"),
+            Const(_)                    => panic!("Attempted to change type from const to array[enum]"),
             MutPtr(_)                    |
             ConstPtr(_)                 => panic!("Attempted to change type from pointer to array[enum]"),
             ConstArrayEnum(_, ref mut e) |
