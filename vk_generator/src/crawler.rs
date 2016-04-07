@@ -39,75 +39,72 @@ pub fn crawl<R: Read>(xml_events: Events<R>, mut registry: VkRegistry) -> VkRegi
                                 "commands"   => cur_block = VkBlock::Commands,
                                 "extensions" => cur_block = VkBlock::Extensions,
 
-                                "type"  =>
-                                    if VkBlock::Types == cur_block {
-                                        if let Some(category) = find_attribute(tag_attrs, "category") {
-                                            registry.push_type(type_buffer).ok();
-                                            match category {
-                                                "basetype"      => type_buffer = VkType::Unhandled,
-                                                "bitmask"       => type_buffer = VkType::Unhandled,
-                                                "define"        => type_buffer = VkType::Unhandled,
-                                                "enum"          => type_buffer = VkType::Unhandled,
-                                                "funcpointer"   => type_buffer = VkType::Unhandled,
-                                                "group"         => type_buffer = VkType::Unhandled,
-                                                "handle"        => type_buffer = VkType::Unhandled,
-                                                "include"       => type_buffer = VkType::Unhandled,
-                                                "struct"        => 
-                                                    type_buffer = VkType::Struct{name: registry.append_str(find_attribute(tag_attrs, "name").unwrap()), fields: Vec::with_capacity(8)},
-                                                "union"         => 
-                                                    type_buffer = VkType::Union{name: registry.append_str(find_attribute(tag_attrs, "name").unwrap()), variants: Vec::with_capacity(8)},
-                                                _               => panic!("Unexpected category")
-                                            }
+                                "type"
+                                    if VkBlock::Types == cur_block =>
+                                    if let Some(category) = find_attribute(tag_attrs, "category") {
+                                        registry.push_type(type_buffer).ok();
+                                        match category {
+                                            "basetype"      => type_buffer = VkType::Unhandled,
+                                            "bitmask"       => type_buffer = VkType::Unhandled,
+                                            "define"        => type_buffer = VkType::Unhandled,
+                                            "enum"          => type_buffer = VkType::Unhandled,
+                                            "funcpointer"   => type_buffer = VkType::Unhandled,
+                                            "group"         => type_buffer = VkType::Unhandled,
+                                            "handle"        => type_buffer = VkType::Unhandled,
+                                            "include"       => type_buffer = VkType::Unhandled,
+                                            "struct"        => 
+                                                type_buffer = VkType::Struct{name: registry.append_str(find_attribute(tag_attrs, "name").unwrap()), fields: Vec::with_capacity(8)},
+                                            "union"         => 
+                                                type_buffer = VkType::Union{name: registry.append_str(find_attribute(tag_attrs, "name").unwrap()), variants: Vec::with_capacity(8)},
+                                            _               => panic!("Unexpected category")
                                         }
-                                    } else {/*panic!("\"type\" tag found outside of \"types\" block")*/}, //TODO: implement fully so panic can be used
+                                    },
+                                "type"       => (),
 
-                                "member" =>
-                                    if VkBlock::Types == cur_block {
-                                        match type_buffer {
-                                            VkType::Struct{ref mut fields, ..} => fields.push(VkMember::empty()),
-                                            VkType::Union{ref mut variants, ..} => variants.push(VkMember::empty()),
-                                            _ =>
-                                                panic!("Unexpected \"member\" tag found")
-                                        }
-                                    } else {panic!("\"member\" tag found outside of \"types\" block")},
+                                "member"
+                                    if VkBlock::Types == cur_block =>
+                                    match type_buffer {
+                                        VkType::Struct{fields: ref mut members, ..}   |
+                                        VkType::Union{variants: ref mut members, ..} => variants.push(VkMember::empty()),
+                                        _                                            => panic!("Unexpected \"member\" tag found")
+                                    },
+                                "member"     => panic!("\"member\" tag found outside of \"types\" block"),
 
                                 _ => ()
                             },
 
-                        Characters{ref chars, tag} => {
+                        Characters{ref chars, tag}
+                            if VkBlock::Types == cur_block => {
                             let chars = &chars[..];
-                            if VkBlock::Types == cur_block {
-                                match type_buffer {
-                                    VkType::Struct{fields: ref mut members, ..} |
-                                    VkType::Union{variants: ref mut members, ..} =>
-                                        match tag {
-                                            "member" =>
-                                                match chars {
-                                                    "const" => members.last_mut().unwrap().change_type_const(),
-                                                    "*"     => members.last_mut().unwrap().change_type_ptr(),
-                                                    _ 
-                                                        if &chars[0..1] == "[" =>
-                                                        match parse_array_index(chars) {
-                                                            Some((size, _)) => {members.last_mut().unwrap().change_type_array(size);}
-                                                            None => panic!(format!("Unexpected characters after name: {}", chars))
-                                                        },
-                                                    _ => ()
-                                                },
-                                            "type" =>
-                                                members.last_mut().unwrap().set_type(registry.append_str(chars)),
-                                            "name" => 
-                                                if let Some((size, name_len)) = parse_array_index(chars) {
-                                                    members.last_mut().unwrap().change_type_array(size)
-                                                                               .set_name(registry.append_str(&chars[..name_len]))
-                                                } else {members.last_mut().unwrap().set_name(registry.append_str(chars))},
-                                            "enum" =>
-                                                members.last_mut().unwrap().change_type_array_enum(registry.append_str(chars)),
-                                            _ => ()
-                                        },
-                                    _ => ()
-                                }
+                            match type_buffer {
+                                VkType::Struct{fields: ref mut members, ..} |
+                                VkType::Union{variants: ref mut members, ..} =>
+                                    match tag {
+                                        "member" =>
+                                            match chars {
+                                                "const" => members.last_mut().unwrap().change_type_const(),
+                                                "*"     => members.last_mut().unwrap().change_type_ptr(),
+                                                _ 
+                                                    if &chars[0..1] == "[" =>
+                                                    match parse_array_index(chars) {
+                                                        Some((size, _)) => {members.last_mut().unwrap().change_type_array(size);}
+                                                        None => panic!(format!("Unexpected characters after name: {}", chars))
+                                                    },
+                                                _       => ()
+                                            },
+                                        "type"   => members.last_mut().unwrap().set_type(registry.append_str(chars)),
+                                        "name"   => 
+                                            if let Some((size, name_len)) = parse_array_index(chars) {
+                                                members.last_mut().unwrap().change_type_array(size)
+                                                                           .set_name(registry.append_str(&chars[..name_len]))
+                                            } else {members.last_mut().unwrap().set_name(registry.append_str(chars))},
+                                        "enum"   => members.last_mut().unwrap().change_type_array_enum(registry.append_str(chars)),
+                                        _        => ()
+                                    },
+                                _ => ()
                             }
                         }
+                        Characters{..} => ()
                     }
                 }
 
@@ -122,7 +119,7 @@ pub fn crawl<R: Read>(xml_events: Events<R>, mut registry: VkRegistry) -> VkRegi
                         // In circumstances where the xml reads something like <foo>foostart<bar>bar</bar>fooend</foo>, the
                         // "fooend" string will appear in vk_elements after the "foostart" event, instead of after <foo>.
                         // Because of that, we must pull the tag from the other Characters event.
-                        XmlElement::Characters{tag, ..} => tag as *const str
+                        XmlElement::Characters{tag, ..}    => tag as *const str
                     };
 
                 unsafe{ vk_elements.push(XmlElement::new_chars(chars, &*tag_ptr)) }
@@ -135,16 +132,14 @@ pub fn crawl<R: Read>(xml_events: Events<R>, mut registry: VkRegistry) -> VkRegi
     for t in &registry.types {
         unsafe {
             match *t {
-                VkType::Struct{name, ref fields} => {
+                VkType::Struct{name, ref fields}  => {
                     println!("Struct {:?}", CStr::from_ptr(name));
-
                     for f in fields {
                         println!("\t{:?}", f);
                     }
                 }
                 VkType::Union{name, ref variants} => {
                     println!("Union {:?}", CStr::from_ptr(name));
-
                     for v in variants {
                         println!("\t{:?}", v);
                     }
@@ -164,14 +159,11 @@ fn find_attribute<'v>(source: &'v Vec<OwnedAttribute>, query: &str) -> Option<&'
 /// Takes a mutable reference to a XmlElement stack, popping the stack of Character elements until
 /// it pops a Tag
 fn pop_element_stack(vk_elements: &mut Vec<XmlElement>) {
-    match vk_elements.pop() {
-        Some(el) => 
-            if let XmlElement::Characters{..} = el {
-                pop_element_stack(vk_elements)
-            },
-
-        None => panic!("Invalid xml; Unexpected closing tag")
-    }
+    if let Some(el) = vk_elements.pop() {
+        if let XmlElement::Characters{..} = el {
+            pop_element_stack(vk_elements)
+        }
+    } else {panic!("Invalid xml; Unexpected closing tag")}
 }
 
 /// Takes a string slice and extracts x from [x], as long as [x] is at the end.
@@ -197,9 +189,9 @@ fn parse_array_index(chars: &str) -> Option<(usize, usize)> {
 
             // The length of the actual name, dropping the array length. Is decremented in the iterator below.
             let mut name_len = chars.len()-1;
-            match chariter.skip_while(|c| {
-                                    name_len -= 1; 
-                                    c.is_digit(10) | c.is_whitespace()}).next() {
+            match chariter.skip_while(|c| {name_len -= 1; 
+                                           c.is_digit(10) | c.is_whitespace()}
+                                           ).next() {
                 Some('[') => (),
                 Some(c)   => panic!(format!("Expected '['; found '{}'", c)),
                 None      => panic!("Expected '['; found nothing")
@@ -207,7 +199,7 @@ fn parse_array_index(chars: &str) -> Option<(usize, usize)> {
             Some((size, name_len))
         }
         '[' => Some((0, 0)),
-        _   =>  None
+        _   => None
     }
 }
 
