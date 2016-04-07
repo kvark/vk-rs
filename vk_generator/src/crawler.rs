@@ -74,27 +74,40 @@ pub fn crawl<R: Read>(xml_events: Events<R>, mut registry: VkRegistry) -> VkRegi
                                 _ => ()
                             },
 
-                        Characters{ref chars, tag} =>
+                        Characters{ref chars, tag} => {
+                            let chars = &chars[..];
                             if VkBlock::Types == cur_block {
                                 match type_buffer {
                                     VkType::Struct{fields: ref mut members, ..} |
                                     VkType::Union{variants: ref mut members, ..} =>
                                         match tag {
                                             "member" =>
-                                                match chars.trim() {
+                                                match chars {
                                                     "const" => members.last_mut().unwrap().change_type_const(),
                                                     "*"     => members.last_mut().unwrap().change_type_ptr(),
-                                                    _       => ()
+                                                    _ 
+                                                        if &chars[0..1] == "[" =>
+                                                        match parse_array_index(chars) {
+                                                            Some((size, _)) => {members.last_mut().unwrap().change_type_array(size);}
+                                                            None => panic!(format!("Unexpected characters after name: {}", chars))
+                                                        },
+                                                    _ => ()
                                                 },
                                             "type" =>
-                                                members.last_mut().unwrap().set_type(registry.append_str(&chars[..])),
-                                            "name" =>
-                                                members.last_mut().unwrap().set_name(registry.append_str(&chars[..])),
+                                                members.last_mut().unwrap().set_type(registry.append_str(chars)),
+                                            "name" => 
+                                                if let Some((size, name_len)) = parse_array_index(chars) {
+                                                    members.last_mut().unwrap().change_type_array(size)
+                                                                               .set_name(registry.append_str(&chars[..name_len]))
+                                                } else {members.last_mut().unwrap().set_name(registry.append_str(chars))},
+                                            "enum" =>
+                                                members.last_mut().unwrap().change_type_array_enum(registry.append_str(chars)),
                                             _ => ()
                                         },
                                     _ => ()
                                 }
                             }
+                        }
                     }
                 }
 
@@ -126,14 +139,14 @@ pub fn crawl<R: Read>(xml_events: Events<R>, mut registry: VkRegistry) -> VkRegi
                     println!("Struct {:?}", CStr::from_ptr(name));
 
                     for f in fields {
-                        println!("{:#?}", f);
+                        println!("\t{:?}", f);
                     }
                 }
                 VkType::Union{name, ref variants} => {
                     println!("Union {:?}", CStr::from_ptr(name));
 
                     for v in variants {
-                        println!("{:#?}", v);
+                        println!("\t{:?}", v);
                     }
                 }
                 _ => ()
@@ -158,6 +171,43 @@ fn pop_element_stack(vk_elements: &mut Vec<XmlElement>) {
             },
 
         None => panic!("Invalid xml; Unexpected closing tag")
+    }
+}
+
+/// Takes a string slice and extracts x from [x], as long as [x] is at the end.
+///
+///
+/// Returns (x, length of `chars` without [x]) if "[x]" is detected
+///
+/// Returns (0, 0) if "[" is detected
+fn parse_array_index(chars: &str) -> Option<(usize, usize)> {
+    let mut chariter = chars.chars().rev();
+    match chariter.next().unwrap() {
+        // This only occurs when the variable is going to be an array. Now, in most cases it appears
+        // *outside* of <name>, but some dumbass decided to have two fields in the entire xml contain it
+        // inside. To the person who did that (you know who you are): if you're writing a document designed
+        // to be easy to parse, PLEASE keep it consistent. This goes for everyone else as well - think of
+        // the person that has to write an interpreter for your goddamn file.
+        ']' => {
+            // The size of the array
+            let mut size = 0;
+            for (i, digit) in chariter.clone().take_while(|c| c.is_digit(10)).enumerate() {
+                size += digit.to_digit(10).unwrap() as usize * (10usize.pow(i as u32));
+            }
+
+            // The length of the actual name, dropping the array length. Is decremented in the iterator below.
+            let mut name_len = chars.len()-1;
+            match chariter.skip_while(|c| {
+                                    name_len -= 1; 
+                                    c.is_digit(10) | c.is_whitespace()}).next() {
+                Some('[') => (),
+                Some(c)   => panic!(format!("Expected '['; found '{}'", c)),
+                None      => panic!("Expected '['; found nothing")
+            }
+            Some((size, name_len))
+        }
+        '[' => Some((0, 0)),
+        _   =>  None
     }
 }
 
