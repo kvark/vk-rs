@@ -55,7 +55,7 @@ pub fn crawl<R: Read>(xml_events: Events<R>, mut registry: VkRegistry) -> VkRegi
                                             "struct"        => 
                                                 type_buffer = VkType::new_struct(registry.append_str(find_attribute(tag_attrs, "name").unwrap()), Vec::with_capacity(8)),
                                             "union"         => 
-                                                type_buffer = VkType::new_union(registry.append_str(find_attribute(tag_attrs, "name").unwrap()), variants: Vec::with_capacity(8)),
+                                                type_buffer = VkType::new_union(registry.append_str(find_attribute(tag_attrs, "name").unwrap()), Vec::with_capacity(8)),
                                             _               => panic!("Unexpected category")
                                         }
                                     },
@@ -65,7 +65,7 @@ pub fn crawl<R: Read>(xml_events: Events<R>, mut registry: VkRegistry) -> VkRegi
                                     if VkBlock::Types == cur_block =>
                                     match type_buffer {
                                         VkType::Struct{fields: ref mut members, ..}   |
-                                        VkType::Union{variants: ref mut members, ..} => variants.push(VkMember::empty()),
+                                        VkType::Union{variants: ref mut members, ..} => members.push(VkMember::empty()),
                                         _                                            => panic!("Unexpected \"member\" tag found")
                                     },
                                 "member"     => panic!("\"member\" tag found outside of \"types\" block"),

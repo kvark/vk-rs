@@ -49,13 +49,19 @@ impl<'a> VkRegistry {
 }
 
 enum VkMemberType {
+    /// A standard, singular, owned field
     Var(*const c_char),
+    /// An intermediate type created when the keyword "const" is detected
     Const(*const c_char),
     ConstPtr(*const c_char),
     MutPtr(*const c_char),
+    /// An array whose contents are immutable
     ConstArray(*const c_char, usize),
+    /// An array whose contents are mutable
     MutArray(*const c_char, usize),
+    /// An const array that uses an API constant as the size
     ConstArrayEnum(*const c_char, *const c_char),
+    /// A mutable array that uses an API constant as the size
     MutArrayEnum(*const c_char, *const c_char),
     /// Default value to initialize with.
     Unknown
@@ -262,14 +268,14 @@ enum VkType {
 }
 
 impl VkType {
-    fn new_struct(name: *const c_char, fields: Vec<VkMember>) {
+    fn new_struct(name: *const c_char, fields: Vec<VkMember>) -> VkType {
         VkType::Struct {
             name: name,
             fields: fields
         }
     }
 
-    fn new_union(name: *const c_char, variants: Vec<VkMember) {
+    fn new_union(name: *const c_char, variants: Vec<VkMember>) -> VkType {
         VkType::Union {
             name: name,
             variants: variants
