@@ -260,3 +260,19 @@ enum VkType {
 
     Unhandled
 }
+
+impl VkType {
+    fn new_struct(name: *const c_char, fields: Vec<VkMember>) {
+        VkType::Struct {
+            name: name,
+            fields: fields
+        }
+    }
+
+    fn new_union(name: *const c_char, variants: Vec<VkMember) {
+        VkType::Union {
+            name: name,
+            variants: variants
+        }
+    }
+}
