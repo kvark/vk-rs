@@ -157,6 +157,9 @@ pub fn crawl<R: Read>(xml_events: Events<R>, mut registry: VkRegistry) -> VkRegi
         }
     }
 
+    // The loop might not push the last type, so it's handled here.
+    registry.push_type(type_buffer).ok();
+
     for t in &registry.types {
         unsafe {
             match *t {
