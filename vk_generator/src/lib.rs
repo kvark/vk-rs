@@ -239,10 +239,64 @@ impl VkMember {
 }
 
 /// A variant of a vulkan enum
-#[derive(Debug)]
-struct VkVariant {
-    name: *const c_char,
-    value: isize
+enum VkVariant {
+    Value {
+        name: *const c_char,
+        value: isize
+    },
+
+    Bitpos {
+        name: *const c_char,
+        bitpos: isize
+    },
+
+    ApiConst {
+        name: *const c_char,
+        value: *const c_char
+    }
+}
+
+impl fmt::Debug for VkVariant {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        use VkVariant::*;
+
+        let pt;
+        let mut fmt_struct = fmt.debug_struct(
+            match *self {
+                Value{name, ..}    => {pt = name; "Value"}
+                Bitpos{name, ..}   => {pt = name; "Bitpos"}
+                ApiConst{name, ..} => {pt = name; "ApiConst"}
+            });
+        fmt_struct.field("name", unsafe{ &if pt != ptr::null() {CStr::from_ptr(pt).to_str().unwrap()} else {"Error: Null Ptr"} });
+        match *self {
+            Value{value, ..} => fmt_struct.field("value", &value),
+            Bitpos{bitpos, ..} => fmt_struct.field("bitpos", &bitpos),
+            ApiConst{value, ..} => fmt_struct.field("value", unsafe{ &if value != ptr::null() {CStr::from_ptr(value).to_str().unwrap()} else {"Error: Null Ptr"} })
+        }.finish()
+    }
+}
+
+impl VkVariant {
+    fn new_value(name: *const c_char, value: isize) -> VkVariant {
+        VkVariant::Value {
+            name: name,
+            value: value
+        }
+    }
+
+    fn new_bitpos(name: *const c_char, bitpos: isize) -> VkVariant {
+        VkVariant::Bitpos {
+            name: name,
+            bitpos: bitpos
+        }
+    }
+
+    fn new_const(name: *const c_char, value: *const c_char) -> VkVariant {
+        VkVariant::ApiConst {
+            name: name,
+            value: value
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -289,6 +343,13 @@ impl VkType {
 
     fn new_union(name: *const c_char) -> VkType {
         VkType::Union {
+            name: name,
+            variants: Vec::with_capacity(8)
+        }
+    }
+
+    fn new_enum(name: *const c_char) -> VkType {
+        VkType::Enum {
             name: name,
             variants: Vec::with_capacity(8)
         }

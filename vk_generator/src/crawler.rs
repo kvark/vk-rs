@@ -5,6 +5,7 @@ use xml::name::OwnedName;
 use xml::attribute::OwnedAttribute;
 use std::io::Read;
 use std::ffi::CStr;
+use std::num::ParseIntError;
 use {VkRegistry, VkType, VkMember};
 use VkVariant;
 
@@ -35,9 +36,35 @@ pub fn crawl<R: Read>(xml_events: Events<R>, mut registry: VkRegistry) -> VkRegi
                         Tag{name: ref tag_name, attributes: ref tag_attrs} => 
                             match &tag_name[..] {
                                 "types"      => cur_block = VkBlock::Types,
-                                "enums"      => cur_block = VkBlock::Enums,
                                 "commands"   => cur_block = VkBlock::Commands,
                                 "extensions" => cur_block = VkBlock::Extensions,
+                                "enums"      => 
+                                    if let Some(name) = find_attribute(tag_attrs, "name") {
+                                        cur_block = VkBlock::Enums;
+                                        registry.push_type(type_buffer).ok();
+                                        type_buffer = VkType::new_enum(registry.append_str(name));
+                                    } else {panic!("Could not find enum name")},
+
+                                "enum"
+                                    if VkBlock::Enums == cur_block =>
+                                    if let Some(name) = find_attribute(tag_attrs, "name") {
+                                        if let VkType::Enum{name: enum_name, ref mut variants} = type_buffer {
+                                            let name = registry.append_str(name);
+
+                                            variants.push(
+                                                if "API Constants" == unsafe{ CStr::from_ptr(enum_name).to_str().unwrap() } {
+                                                    if let Some(value) = find_attribute(tag_attrs, "value") {
+                                                        VkVariant::new_const(name, registry.append_str(value))
+                                                    } else {panic!("Could not find value in API Constant")}
+
+                                                } else if let Some(value) = find_attribute(tag_attrs, "value") {
+                                                    VkVariant::new_value(name, to_isize(value).unwrap())
+                                                } else if let Some(bitpos) = find_attribute(tag_attrs, "bitpos") {
+                                                    VkVariant::new_bitpos(name, to_isize(bitpos).unwrap())
+                                                } else {panic!("Could not find value or bitpos in enum")}
+                                            );
+                                        }
+                                    } else {panic!("Could not find enum variant name")},
 
                                 "type"
                                     if VkBlock::Types == cur_block =>
@@ -169,18 +196,28 @@ pub fn crawl<R: Read>(xml_events: Events<R>, mut registry: VkRegistry) -> VkRegi
                         println!("\t{:?}", f);
                     }
                 }
+
                 VkType::Union{name, ref variants} => {
                     println!("Union {:?}", CStr::from_ptr(name));
                     for v in variants {
                         println!("\t{:?}", v);
                     }
                 }
+
+                VkType::Enum{name, ref variants} => {
+                    println!("Enum {:?}", CStr::from_ptr(name));
+                    for v in variants {
+                        println!("\t{:?}", v);
+                    }
+                }
+
                 VkType::TypeDef{ty, name, validity} =>
                     if validity != 0 {
                         panic!("Invalid typedef")
                     } else {
                         println!("TypeDef {:?} {:?}", CStr::from_ptr(ty), CStr::from_ptr(name))
                     },
+
                 VkType::Handle{name, validity, dispatchable} =>
                     if !validity {
                         panic!("Invalid handle")
@@ -189,12 +226,21 @@ pub fn crawl<R: Read>(xml_events: Events<R>, mut registry: VkRegistry) -> VkRegi
                     } else {
                         println!("Non-Dispatchable Handle {:?}", CStr::from_ptr(name))
                     },
+
                 _ => ()
             }
         }
     }
 
     registry
+}
+
+fn to_isize(source: &str) -> Result<isize, ParseIntError> {
+    if source.len() < 2 || &source[0..2] != "0x" {
+        isize::from_str_radix(source, 10)
+    } else {
+        isize::from_str_radix(&source[2..], 16)
+    }
 }
 
 fn find_attribute<'v>(source: &'v Vec<OwnedAttribute>, query: &str) -> Option<&'v str> {
