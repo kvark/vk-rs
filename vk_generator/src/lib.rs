@@ -280,17 +280,17 @@ enum VkType {
 }
 
 impl VkType {
-    fn new_struct(name: *const c_char, fields: Vec<VkMember>) -> VkType {
+    fn new_struct(name: *const c_char) -> VkType {
         VkType::Struct {
             name: name,
-            fields: fields
+            fields: Vec::with_capacity(8)
         }
     }
 
-    fn new_union(name: *const c_char, variants: Vec<VkMember>) -> VkType {
+    fn new_union(name: *const c_char) -> VkType {
         VkType::Union {
             name: name,
-            variants: variants
+            variants: Vec::with_capacity(8)
         }
     }
 

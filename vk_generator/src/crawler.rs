@@ -53,9 +53,9 @@ pub fn crawl<R: Read>(xml_events: Events<R>, mut registry: VkRegistry) -> VkRegi
                                             "handle"        => type_buffer = VkType::empty_handle(),
                                             "include"       => type_buffer = VkType::Unhandled,
                                             "struct"        => 
-                                                type_buffer = VkType::new_struct(registry.append_str(find_attribute(tag_attrs, "name").unwrap()), Vec::with_capacity(8)),
+                                                type_buffer = VkType::new_struct(registry.append_str(find_attribute(tag_attrs, "name").unwrap())),
                                             "union"         => 
-                                                type_buffer = VkType::new_union(registry.append_str(find_attribute(tag_attrs, "name").unwrap()), Vec::with_capacity(8)),
+                                                type_buffer = VkType::new_union(registry.append_str(find_attribute(tag_attrs, "name").unwrap())),
                                             _               => panic!("Unexpected category")
                                         }
                                     },
