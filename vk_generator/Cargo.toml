@@ -15,5 +15,5 @@ exclude = [
 ]
 
 [dependencies]
-vk_api = "*"
+vk_api = {path = "../vk_api/"}
 xml-rs = "0.3.0"
