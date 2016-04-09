@@ -65,6 +65,7 @@ pub fn crawl<R: Read>(xml_events: Events<R>, mut registry: VkRegistry) -> VkRegi
                                             );
                                         }
                                     } else {panic!("Could not find enum variant name")},
+                                "enum"       => (),
 
                                 "type"
                                     if VkBlock::Types == cur_block =>
@@ -92,7 +93,10 @@ pub fn crawl<R: Read>(xml_events: Events<R>, mut registry: VkRegistry) -> VkRegi
                                     if VkBlock::Types == cur_block =>
                                     match type_buffer {
                                         VkType::Struct{fields: ref mut members, ..}   |
-                                        VkType::Union{variants: ref mut members, ..} => members.push(VkMember::empty()),
+                                        VkType::Union{variants: ref mut members, ..} => 
+                                            if let Some("true") = find_attribute(tag_attrs, "optional") {
+                                                members.push(VkMember::optional())
+                                            } else {members.push(VkMember::empty())},
                                         _                                            => panic!("Unexpected \"member\" tag found")
                                     },
                                 "member"     => panic!("\"member\" tag found outside of \"types\" block"),

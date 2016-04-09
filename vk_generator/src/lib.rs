@@ -107,6 +107,7 @@ impl fmt::Debug for VkMemberType {
 struct VkMember {
     field_type: VkMemberType,
     field_name: *const c_char,
+    optional: bool
 }
 
 impl fmt::Debug for VkMember {
@@ -114,6 +115,7 @@ impl fmt::Debug for VkMember {
         fmt .debug_struct("VkMember")
             .field("type", &self.field_type)
             .field("name", unsafe{ &CStr::from_ptr(self.field_name) })
+            .field("optional", &self.optional)
             .finish()
     }
 }
@@ -122,7 +124,16 @@ impl VkMember {
     fn empty() -> VkMember {
         VkMember {
             field_type: VkMemberType::Unknown,
-            field_name: ptr::null()
+            field_name: ptr::null(),
+            optional: false
+        }
+    }
+
+    fn optional() -> VkMember {
+        VkMember {
+            field_type: VkMemberType::Unknown,
+            field_name: ptr::null(),
+            optional: true
         }
     }
 
