@@ -72,6 +72,110 @@ enum VkMemberType {
     Unknown
 }
 
+impl VkMemberType {
+    fn type_ptr(&self) -> Option<*const c_char> {
+        use VkMemberType::*;
+        match *self {
+            Var(s)               |
+            Const(s)             |
+            ConstPtr(s)          |
+            MutPtr(s)            |
+            ConstArray(s, _)     |
+            ConstArrayEnum(s, _) |
+            MutArray(s, _)       |
+            MutArrayEnum(s, _)  => Some(s),
+            Unknown => None
+        }
+    }
+
+    fn set_type(&mut self, typ: *const c_char) {
+        use VkMemberType::*;
+        match *self {
+            Var(ref mut s)               |
+            Const(ref mut s)             |
+            ConstPtr(ref mut s)          |
+            MutPtr(ref mut s)            | 
+            ConstArray(ref mut s, _)     |
+            ConstArrayEnum(ref mut s, _) |
+            MutArray(ref mut s, _)       |
+            MutArrayEnum(ref mut s, _)  => 
+                if *s == ptr::null() {
+                    *s = typ
+                } else {panic!("Field type already set")},
+            Unknown                     => *self = Var(typ)
+
+        }
+    }
+
+    fn make_var(&mut self) {
+        use VkMemberType::*;
+        match *self {
+            Unknown   => *self = Var(ptr::null()),
+            _         => panic!("Unexpected change type to var")
+        }
+    }
+
+    fn make_const(&mut self) {
+        use VkMemberType::*;
+        match *self {
+            Var(s)               |
+            Const(s)            => *self = Const(s),
+            ConstPtr(_)          |
+            MutPtr(_)           => panic!("Attempted changing mutability of pointer"),
+            ConstArray(_, _)     |
+            ConstArrayEnum(_, _) |
+            MutArray(_, _)       |
+            MutArrayEnum(_, _)  => panic!("Attempted changing mutability of array"),
+            Unknown             => *self = Const(ptr::null())
+        }
+    }
+
+    fn make_ptr(&mut self) {
+        use VkMemberType::*;
+        match *self {
+            Var(s)              => *self = MutPtr(s),
+            Const(s)            => *self = ConstPtr(s),
+            MutPtr(_)            |
+            ConstPtr(_)         => panic!("Attempted to change type from pointer to pointer"),
+            ConstArray(_, _)     |
+            ConstArrayEnum(_, _) |
+            MutArrayEnum(_, _)   |
+            MutArray(_, _)      => panic!("Attempted to change type from array to pointer"),
+            Unknown             => *self = MutPtr(ptr::null())
+        }
+    }
+
+    fn make_array(&mut self, size: usize) {
+        use VkMemberType::*;
+        match *self {
+            Var(s)              => *self = if size == 0 {MutArrayEnum(s, ptr::null())} else {MutArray(s, size)},
+            Const(s)            => *self = if size == 0 {ConstArrayEnum(s, ptr::null())} else {ConstArray(s, size)},
+            MutPtr(_)            |
+            ConstPtr(_)         => panic!("Attempted to change type from pointer to array"),
+            ConstArray(_, _)     |
+            ConstArrayEnum(_, _) |
+            MutArrayEnum(_, _)   |
+            MutArray(_, _)      => panic!("Attempted to change type from array to array"),
+            Unknown             => panic!("Attempted to change type to array without type identifier")
+        }
+    }
+
+    fn make_array_enum(&mut self, size_enum: *const c_char) {
+        use VkMemberType::*;
+        match *self {
+            Var(_)                      => panic!("Attempted to change type from var to array[enum]"),
+            Const(_)                    => panic!("Attempted to change type from const to array[enum]"),
+            MutPtr(_)                    |
+            ConstPtr(_)                 => panic!("Attempted to change type from pointer to array[enum]"),
+            ConstArrayEnum(_, ref mut e) |
+            MutArrayEnum(_, ref mut e)  => *e = size_enum,
+            ConstArray(_, _)             |
+            MutArray(_, _)              => panic!("Attempted to change type from array to array[enum]"),
+            Unknown                     => panic!("Attempted to change type to array without type identifier")
+        }
+    }
+}
+
 impl fmt::Debug for VkMemberType {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         use VkMemberType::*;
@@ -138,106 +242,32 @@ impl VkMember {
     }
 
     fn type_ptr(&self) -> Option<*const c_char> {
-        use VkMemberType::*;
-        match self.field_type {
-            Var(s)               |
-            Const(s)             |
-            ConstPtr(s)          |
-            MutPtr(s)            |
-            ConstArray(s, _)     |
-            ConstArrayEnum(s, _) |
-            MutArray(s, _)       |
-            MutArrayEnum(s, _)  => Some(s),
-            Unknown => None
-        }
+        self.field_type.type_ptr()
     }
 
     fn set_type(&mut self, field_type: *const c_char) {
-        use VkMemberType::*;
-        match self.field_type {
-            Var(ref mut s)               |
-            Const(ref mut s)             |
-            ConstPtr(ref mut s)          |
-            MutPtr(ref mut s)            | 
-            ConstArray(ref mut s, _)     |
-            ConstArrayEnum(ref mut s, _) |
-            MutArray(ref mut s, _)       |
-            MutArrayEnum(ref mut s, _)  => 
-                if *s == ptr::null() {
-                    *s = field_type
-                } else {panic!("Field type already set")},
-            Unknown                     => self.field_type = Var(field_type)
-
-        }
+        self.field_type.set_type(field_type)
     }
 
-    fn change_type_var(&mut self) {
-        use VkMemberType::*;
-        match self.field_type {
-            Unknown   => self.field_type = Var(ptr::null()),
-            _         => panic!("Unexpected change type to var")
-        }
+    fn make_type_var(&mut self) {
+        self.field_type.make_var()
     }
 
-    fn change_type_const(&mut self) {
-        use VkMemberType::*;
-        match self.field_type {
-            Var(s)               |
-            Const(s)            => self.field_type = Const(s),
-            ConstPtr(_)          |
-            MutPtr(_)           => panic!("Attempted changing mutability of pointer"),
-            ConstArray(_, _)     |
-            ConstArrayEnum(_, _) |
-            MutArray(_, _)       |
-            MutArrayEnum(_, _)  => panic!("Attempted changing mutability of array"),
-            Unknown             => self.field_type = Const(ptr::null())
-        }
+    fn make_type_const(&mut self) {
+        self.field_type.make_const()
     }
 
-    fn change_type_ptr(&mut self) {
-        use VkMemberType::*;
-        match self.field_type {
-            Var(s)              => self.field_type = MutPtr(s),
-            Const(s)            => self.field_type = ConstPtr(s),
-            MutPtr(_)            |
-            ConstPtr(_)         => panic!("Attempted to change type from pointer to pointer"),
-            ConstArray(_, _)     |
-            ConstArrayEnum(_, _) |
-            MutArrayEnum(_, _)   |
-            MutArray(_, _)      => panic!("Attempted to change type from array to pointer"),
-            Unknown             => self.field_type = MutPtr(ptr::null())
-        }
+    fn make_type_ptr(&mut self) {
+        self.field_type.make_ptr()
     }
 
-    fn change_type_array(&mut self, size: usize) -> &mut VkMember {
-        use VkMemberType::*;
-        match self.field_type {
-            Var(s)              => self.field_type = if size == 0 {MutArrayEnum(s, ptr::null())} else {MutArray(s, size)},
-            Const(s)            => self.field_type = if size == 0 {ConstArrayEnum(s, ptr::null())} else {ConstArray(s, size)},
-            MutPtr(_)            |
-            ConstPtr(_)         => panic!("Attempted to change type from pointer to array"),
-            ConstArray(_, _)     |
-            ConstArrayEnum(_, _) |
-            MutArrayEnum(_, _)   |
-            MutArray(_, _)      => panic!("Attempted to change type from array to array"),
-            Unknown             => panic!("Attempted to change type to array without type identifier")
-        }
+    fn make_type_array(&mut self, size: usize) -> &mut VkMember {
+        self.field_type.make_array(size);
         self
     }
 
-    fn change_type_array_enum(&mut self, size_enum: *const c_char) {
-        use VkMemberType::*;
-        match self.field_type {
-            Var(_)                      => panic!("Attempted to change type from var to array[enum]"),
-            Const(_)                    => panic!("Attempted to change type from const to array[enum]"),
-            MutPtr(_)                    |
-            ConstPtr(_)                 => panic!("Attempted to change type from pointer to array[enum]"),
-            ConstArrayEnum(_, ref mut e) |
-            MutArrayEnum(_, ref mut e)  => *e = size_enum,
-            ConstArray(_, _)             |
-            MutArray(_, _)              => panic!("Attempted to change type from array to array[enum]"),
-            Unknown                     => panic!("Attempted to change type to array without type identifier")
-        }
+    fn make_type_array_enum(&mut self, size_enum: *const c_char) {
+        self.field_type.make_array_enum(size_enum)
     }
 
     fn set_name(&mut self, field_name: *const c_char) {
@@ -335,7 +365,7 @@ enum VkType {
 
     TypeDef {
         /// The type that is being aliased
-        ty: *const c_char,
+        typ: *const c_char,
         /// The name of the new type
         name: *const c_char,
         validity: u8
@@ -377,7 +407,7 @@ impl VkType {
     fn empty_typedef() -> VkType {
         use tdvalid::*;
         VkType::TypeDef {
-            ty: ptr::null(),
+            typ: ptr::null(),
             name: ptr::null(),
             validity: NOSEMICOLON | NOTYPEDEF
         }

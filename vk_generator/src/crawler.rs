@@ -113,12 +113,12 @@ pub fn crawl<R: Read>(xml_events: Events<R>, mut registry: VkRegistry) -> VkRegi
                                     match tag {
                                         "member" =>
                                             match chars {
-                                                "const" => members.last_mut().unwrap().change_type_const(),
-                                                "*"     => members.last_mut().unwrap().change_type_ptr(),
+                                                "const" => members.last_mut().unwrap().make_type_const(),
+                                                "*"     => members.last_mut().unwrap().make_type_ptr(),
                                                 _ 
                                                     if &chars[0..1] == "[" =>
                                                     match parse_array_index(chars) {
-                                                        Some((size, _)) => {members.last_mut().unwrap().change_type_array(size);}
+                                                        Some((size, _)) => {members.last_mut().unwrap().make_type_array(size);}
                                                         None => panic!(format!("Unexpected characters after name: {}", chars))
                                                     },
                                                 _       => ()
@@ -126,13 +126,13 @@ pub fn crawl<R: Read>(xml_events: Events<R>, mut registry: VkRegistry) -> VkRegi
                                         "type"   => members.last_mut().unwrap().set_type(registry.append_str(chars)),
                                         "name"   => 
                                             if let Some((size, name_len)) = parse_array_index(chars) {
-                                                members.last_mut().unwrap().change_type_array(size)
+                                                members.last_mut().unwrap().make_type_array(size)
                                                                            .set_name(registry.append_str(&chars[..name_len]))
                                             } else {members.last_mut().unwrap().set_name(registry.append_str(chars))},
-                                        "enum"   => members.last_mut().unwrap().change_type_array_enum(registry.append_str(chars)),
+                                        "enum"   => members.last_mut().unwrap().make_type_array_enum(registry.append_str(chars)),
                                         _        => ()
                                     },
-                                VkType::TypeDef{ref mut ty, 
+                                VkType::TypeDef{ref mut typ, 
                                                 ref mut name, 
                                                 ref mut validity} =>
                                     match tag {
@@ -140,7 +140,7 @@ pub fn crawl<R: Read>(xml_events: Events<R>, mut registry: VkRegistry) -> VkRegi
                                             match chars {
                                                 "typedef" => *validity ^= NOTYPEDEF,
                                                 ";"       => *validity ^= NOSEMICOLON,
-                                                _         => *ty = registry.append_str(chars)
+                                                _         => *typ = registry.append_str(chars)
                                             },
                                         "name" => *name = registry.append_str(chars),
                                         _ => panic!("Unexpected tag")
@@ -215,11 +215,11 @@ pub fn crawl<R: Read>(xml_events: Events<R>, mut registry: VkRegistry) -> VkRegi
                     }
                 }
 
-                VkType::TypeDef{ty, name, validity} =>
+                VkType::TypeDef{typ, name, validity} =>
                     if validity != 0 {
                         panic!("Invalid typedef")
                     } else {
-                        println!("TypeDef {:?} {:?}", CStr::from_ptr(ty), CStr::from_ptr(name))
+                        println!("TypeDef {:?} {:?}", CStr::from_ptr(typ), CStr::from_ptr(name))
                     },
 
                 VkType::Handle{name, validity, dispatchable} =>
