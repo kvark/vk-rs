@@ -4,15 +4,16 @@ use xml::reader::{Events, XmlEvent};
 use xml::name::OwnedName;
 use xml::attribute::OwnedAttribute;
 use std::io::Read;
+use std::slice::Iter;
 use std::ffi::CStr;
 use std::num::ParseIntError;
-use {VkRegistry, VkType, VkMember};
-use VkVariant;
+use ::{VkRegistry, VkType, VkMember, VkVariant, VkCommand, VkParam};
 
 pub fn crawl<R: Read>(xml_events: Events<R>, mut registry: VkRegistry) -> VkRegistry {
     use self::XmlElement::*;
 
     let mut type_buffer = VkType::Unhandled;
+    let mut command_buffer: Option<VkCommand> = None;
     let mut cur_block = VkBlock::None;
     // A variable that contains what the index of the element in vk_elements that vk_elements was
     // popped to. Used to prevent the element iterator from going over elements that have already
@@ -38,6 +39,7 @@ pub fn crawl<R: Read>(xml_events: Events<R>, mut registry: VkRegistry) -> VkRegi
                                 "types"      => cur_block = VkBlock::Types,
                                 "commands"   => cur_block = VkBlock::Commands,
                                 "extensions" => cur_block = VkBlock::Extensions,
+                                "feature"    => cur_block = VkBlock::Feature,
                                 "enums"      => 
                                     if let Some(name) = find_attribute(tag_attrs, "name") {
                                         cur_block = VkBlock::Enums;
@@ -101,10 +103,20 @@ pub fn crawl<R: Read>(xml_events: Events<R>, mut registry: VkRegistry) -> VkRegi
                                     },
                                 "member"     => panic!("\"member\" tag found outside of \"types\" block"),
 
+                                "command"
+                                    if VkBlock::Commands == cur_block => {
+                                        registry.push_command(command_buffer).ok();
+                                        command_buffer = Some(VkCommand::empty());
+                                    }
+                                "param"
+                                    if VkBlock::Commands == cur_block => {
+                                        command_buffer.as_mut().unwrap().params.push(VkParam::empty());
+                                    },
+
                                 _ => ()
                             },
 
-                        Characters{ref chars, tag}
+                        Characters{ref chars, tags: (tag, _)}
                             if VkBlock::Types == cur_block => {
                             let chars = &chars[..];
                             match type_buffer {
@@ -113,23 +125,24 @@ pub fn crawl<R: Read>(xml_events: Events<R>, mut registry: VkRegistry) -> VkRegi
                                     match tag {
                                         "member" =>
                                             match chars {
-                                                "const" => members.last_mut().unwrap().make_type_const(),
-                                                "*"     => members.last_mut().unwrap().make_type_ptr(),
+                                                "const" => members.last_mut().unwrap().field_type.make_const(),
+                                                "*"     => members.last_mut().unwrap().field_type.make_ptr(),
                                                 _ 
                                                     if &chars[0..1] == "[" =>
                                                     match parse_array_index(chars) {
-                                                        Some((size, _)) => {members.last_mut().unwrap().make_type_array(size);}
+                                                        Some((size, _)) => {members.last_mut().unwrap().field_type.make_array(size);}
                                                         None => panic!(format!("Unexpected characters after name: {}", chars))
                                                     },
                                                 _       => ()
                                             },
-                                        "type"   => members.last_mut().unwrap().set_type(registry.append_str(chars)),
+                                        "type"   => members.last_mut().unwrap().field_type.set_type(registry.append_str(chars)),
                                         "name"   => 
                                             if let Some((size, name_len)) = parse_array_index(chars) {
-                                                members.last_mut().unwrap().make_type_array(size)
-                                                                           .set_name(registry.append_str(&chars[..name_len]))
+                                                let member = members.last_mut().unwrap();
+                                                member.field_type.make_array(size);
+                                                member.set_name(registry.append_str(&chars[..name_len]));
                                             } else {members.last_mut().unwrap().set_name(registry.append_str(chars))},
-                                        "enum"   => members.last_mut().unwrap().make_type_array_enum(registry.append_str(chars)),
+                                        "enum"   => members.last_mut().unwrap().field_type.set_array_len(registry.append_str(chars)),
                                         _        => ()
                                     },
                                 VkType::TypeDef{ref mut typ, 
@@ -153,8 +166,8 @@ pub fn crawl<R: Read>(xml_events: Events<R>, mut registry: VkRegistry) -> VkRegi
                                             match chars {
                                                 "VK_DEFINE_HANDLE"                  =>  *validity = true,
                                                 "VK_DEFINE_NON_DISPATCHABLE_HANDLE" => {*validity = true; *dispatchable = false}
-                                                "(" |
-                                                ")" => (),
+                                                "("                                  |
+                                                ")"                                 => (),
                                                 _                                   => panic!("Unexpected handle")
                                             },
                                         "name" => *name = registry.append_str(chars),
@@ -163,6 +176,46 @@ pub fn crawl<R: Read>(xml_events: Events<R>, mut registry: VkRegistry) -> VkRegi
                                 _ => ()
                             }
                         }
+
+                        Characters{ref chars, tags: (tag, Some(tag1))}
+                            if VkBlock::Commands == cur_block => {
+                                use std::mem;
+                                let chars = &chars[..];
+                                let command_buffer = command_buffer.as_mut().unwrap();
+
+                                if let Some(last_param) = command_buffer.params.last_mut() {
+                                    if chars == "const" {
+                                        last_param.typ.make_const();
+                                    } else if chars == "*" {
+                                        last_param.typ.make_ptr();
+                                    } else if &chars[0..1] == "[" {
+                                        if let Some((len, _)) = parse_array_index(chars) {
+                                            last_param.typ.make_array(len)
+                                        } else {
+                                            panic!("Unexpected characters after array operator")
+                                        }
+                                    }
+                                    match tag1 {
+                                        "proto" => panic!("Unexpected proto tag"),
+                                        "param" =>
+                                            match tag {
+                                                "type" => last_param.typ.set_type(registry.append_str(chars)),
+                                                "name" => last_param.name = registry.append_str(chars),
+                                                _      => panic!("Unexpected tag")
+                                            },
+                                        _ => ()
+                                    }
+                                } else if tag1 == "proto" {
+                                    match tag {
+                                        "type" => 
+                                            if chars == "void" {
+                                                command_buffer.ret.make_void();
+                                            } else {command_buffer.ret.set_type(registry.append_str(chars))},
+                                        "name" => command_buffer.name = registry.append_str(chars),
+                                        _      => panic!("Unexpected tag")
+                                    }
+                                }
+                            }
                         Characters{..} => ()
                     }
                 }
@@ -172,24 +225,18 @@ pub fn crawl<R: Read>(xml_events: Events<R>, mut registry: VkRegistry) -> VkRegi
             }
 
             XmlEvent::Characters(chars) => {
-                let tag_ptr =
-                    match *vk_elements.last().unwrap() {
-                        XmlElement::Tag{name: ref tag, ..} => &tag[..] as *const str,
-                        // In circumstances where the xml reads something like <foo>foostart<bar>bar</bar>fooend</foo>, the
-                        // "fooend" string will appear in vk_elements after the "foostart" event, instead of after <foo>.
-                        // Because of that, we must pull the tag from the other Characters event.
-                        XmlElement::Characters{tag, ..}    => tag as *const str
-                    };
+                let tags = get_tags(&vk_elements);
 
-                unsafe{ vk_elements.push(XmlElement::new_chars(chars, &*tag_ptr)) }
+                unsafe{ vk_elements.push(XmlElement::new_chars(chars, (&*tags.0, tags.1.map(|t| &*t)))) }
             }
 
             _ => ()
         }
     }
 
-    // The loop might not push the last type, so it's handled here.
+    // The loop doesn't push the last type/command, so that's handled here.
     registry.push_type(type_buffer).ok();
+    registry.push_command(command_buffer).ok();
 
     for t in &registry.types {
         unsafe {
@@ -236,6 +283,10 @@ pub fn crawl<R: Read>(xml_events: Events<R>, mut registry: VkRegistry) -> VkRegi
         }
     }
 
+    for c in &registry.commands {
+        println!("{:#?}", c);
+    }
+
     registry
 }
 
@@ -261,12 +312,29 @@ fn pop_element_stack(vk_elements: &mut Vec<XmlElement>) {
     } else {panic!("Invalid xml; Unexpected closing tag")}
 }
 
+fn get_tags(vk_elements: &Vec<XmlElement>) -> (*const str, Option<*const str>) {
+    fn recursive(mut vk_elements: Iter<XmlElement>, mut tags: [Option<*const str>; 2], mut index: usize) -> (*const str, Option<*const str>) {
+        match vk_elements.next_back() {
+            Some(el) if index < 2 => {
+                if let XmlElement::Tag{ref name, ..} = *el {
+                    tags[index] = Some(&name[..] as *const str);
+                    index += 1;
+                }
+                recursive(vk_elements, tags, index)
+            }
+            _                     => (tags[0].unwrap(), tags[1])
+        }
+    }
+
+    recursive(vk_elements.iter(), [None; 2], 0)
+}
+
 /// Takes a string slice and extracts x from [x], as long as [x] is at the end.
 ///
 ///
 /// Returns (x, length of `chars` without [x]) if "[x]" is detected
 ///
-/// Returns (0, 0) if "[" is detected
+/// Returns (0, 0) if "[" is detected at end instead of "]"
 fn parse_array_index(chars: &str) -> Option<(usize, usize)> {
     let mut chariter = chars.chars().rev();
     match chariter.next().unwrap() {
@@ -308,7 +376,7 @@ enum XmlElement<'a> {
     },
     Characters{
         chars: String,
-        tag: &'a str
+        tags: (&'a str, Option<&'a str>)
     }
 }
 
@@ -320,10 +388,10 @@ impl<'a> XmlElement<'a> {
         }
     }
 
-    fn new_chars(chars: String, tag: &'a str) -> XmlElement<'a> {
+    fn new_chars(chars: String, tags: (&'a str, Option<&'a str>)) -> XmlElement<'a> {
         XmlElement::Characters {
             chars: chars,
-            tag: tag
+            tags: tags
         }
     }
 }
@@ -334,5 +402,6 @@ enum VkBlock {
     Enums,
     Commands,
     Extensions,
+    Feature,
     None
 }
