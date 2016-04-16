@@ -399,6 +399,15 @@ enum VkType {
         validity: u8
     },
 
+    /// Defines are hardcoded into the generator, as procedurally generating them would be hard as fuck
+    Define {
+        name: *const str
+    },
+    /// Same goes for function pointers
+    FuncPointer {
+        name: *const str
+    },
+
     Unhandled
 }
 
@@ -438,6 +447,24 @@ impl VkType {
             typ: null_str(),
             name: null_str(),
             validity: NOSEMICOLON | NOTYPEDEF
+        }
+    }
+
+    fn new_define(name: *const str) -> VkType {
+        VkType::Define  {
+            name: name
+        }
+    }
+
+    fn empty_define() -> VkType {
+        VkType::Define {
+            name: null_str()
+        }
+    }
+
+    fn empty_funcpointer() -> VkType {
+        VkType::FuncPointer {
+            name: null_str()
         }
     }
 }
