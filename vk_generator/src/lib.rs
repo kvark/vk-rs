@@ -5,29 +5,38 @@ mod crawler;
 
 use xml::{EventReader, ParserConfig};
 
-use std::os::raw::c_char;
-use std::ffi::CStr;
-use std::ptr;
-use std::fmt;
+use std::{fmt, mem};
 
-pub fn load_xml() {
+#[inline]
+fn null_str() -> *const str {
+    unsafe{ mem::transmute([0usize; 2] ) }
+}
+
+#[inline]
+fn to_option<'u>(s: *const str) -> Option<&'u str> {
+    unsafe{ mem::transmute(s) }
+}
+
+pub fn load_xml() -> VkRegistry {
     let vk_xml = EventReader::new_with_config(vk_api::VK_XML, ParserConfig::new().trim_whitespace(true));
     // The vulkan registry
-    let registry = crawler::crawl(vk_xml.into_iter(), VkRegistry::new(vk_api::VK_XML.len()));
+    let mut registry = VkRegistry::new(vk_api::VK_XML.len());
+    crawler::crawl(vk_xml.into_iter(), &mut registry);
+    registry
 }
 
 pub struct VkRegistry {
     string_buffer: String,
     types: Vec<VkType>,
-    commands: Vec<VkCommand>
+    commands: Vec<VkCommand>,
 }
 
-impl<'a> VkRegistry {
+impl VkRegistry {
     fn new(capacity: usize) -> VkRegistry {
         VkRegistry {
             string_buffer: String::with_capacity(capacity),
             types: Vec::with_capacity(256),
-            commands: Vec::with_capacity(128)
+            commands: Vec::with_capacity(128),
         }
     }
 
@@ -45,19 +54,22 @@ impl<'a> VkRegistry {
         } else {Err(())}
     }
 
-    /// Append a given attribute to the internal string buffer and return a pointer to a
-    /// null-terminated string that represents the attribute
-    fn append_str(&mut self, string: &str) -> *const c_char {
+    /// Append a given attribute to the internal string buffer and return an unsafe slice into the buffer string
+    fn append_str(&mut self, string: &str) -> *const str {
+        use std::{slice, str};
+
         let prepushcap = self.string_buffer.capacity();
         // We want to have all of the string in one block of memory in order to save heap allocation time. 
         self.string_buffer.push_str(string);
-        self.string_buffer.push('\0');
 
         if prepushcap != self.string_buffer.capacity() {
             panic!("Allocation detected in string buffer")
         }
 
-        (self.string_buffer.as_ptr() as usize + self.string_buffer.len() - string.len() - 1) as *const c_char
+        unsafe {
+            let ptr = self.string_buffer.as_ptr().offset((self.string_buffer.len() - string.len()) as isize);
+            str::from_utf8_unchecked(slice::from_raw_parts(ptr, string.len())) as *const str
+        }
     }
 }
 
@@ -65,19 +77,19 @@ impl<'a> VkRegistry {
 /// any associated data.
 enum VkElType {
     /// A standard, singular, owned field
-    Var(*const c_char),
+    Var(*const str),
     /// An intermediate type created when the keyword "const" is detected
-    Const(*const c_char),
-    ConstPtr(*const c_char),
-    MutPtr(*const c_char),
+    Const(*const str),
+    ConstPtr(*const str),
+    MutPtr(*const str),
     /// An array whose contents are immutable
-    ConstArray(*const c_char, usize),
+    ConstArray(*const str, usize),
     /// An array whose contents are mutable
-    MutArray(*const c_char, usize),
+    MutArray(*const str, usize),
     /// An const array that uses an API constant as the size
-    ConstArrayEnum(*const c_char, *const c_char),
+    ConstArrayEnum(*const str, *const str),
     /// A mutable array that uses an API constant as the size
-    MutArrayEnum(*const c_char, *const c_char),
+    MutArrayEnum(*const str, *const str),
     /// Nothing. Equivilant to () in Rust
     Void,
     /// Default value to initialize with.
@@ -85,7 +97,7 @@ enum VkElType {
 }
 
 impl VkElType {
-    fn type_ptr(&self) -> Option<*const c_char> {
+    fn type_ptr(&self) -> Option<*const str> {
         use VkElType::*;
         match *self {
             Var(s)               |
@@ -101,7 +113,7 @@ impl VkElType {
         }
     }
 
-    fn set_type(&mut self, typ: *const c_char) {
+    fn set_type(&mut self, typ: *const str) {
         use VkElType::*;
         match *self {
             Var(ref mut s)               |
@@ -112,7 +124,7 @@ impl VkElType {
             ConstArrayEnum(ref mut s, _) |
             MutArray(ref mut s, _)       |
             MutArrayEnum(ref mut s, _)  => 
-                if *s == ptr::null() {
+                if *s == null_str() {
                     *s = typ
                 } else {panic!("Field type already set")},
             Void                        => panic!("Field type already set"),
@@ -133,7 +145,7 @@ impl VkElType {
             MutArray(_, _)       |
             MutArrayEnum(_, _)  => panic!("Attempted changing mutability of array"),
             Void                 |
-            Unknown             => *self = Const(ptr::null())
+            Unknown             => *self = Const(null_str())
         }
     }
 
@@ -149,15 +161,15 @@ impl VkElType {
             MutArrayEnum(_, _)   |
             MutArray(_, _)      => panic!("Attempted to change type from array to pointer"),
             Void                 |
-            Unknown             => *self = MutPtr(ptr::null())
+            Unknown             => *self = MutPtr(null_str())
         }
     }
 
     fn make_array(&mut self, size: usize) {
         use VkElType::*;
         match *self {
-            Var(s)              => *self = if size == 0 {MutArrayEnum(s, ptr::null())} else {MutArray(s, size)},
-            Const(s)            => *self = if size == 0 {ConstArrayEnum(s, ptr::null())} else {ConstArray(s, size)},
+            Var(s)              => *self = if size == 0 {MutArrayEnum(s, null_str())} else {MutArray(s, size)},
+            Const(s)            => *self = if size == 0 {ConstArrayEnum(s, null_str())} else {ConstArray(s, size)},
             MutPtr(_)            |
             ConstPtr(_)         => panic!("Attempted to change type from pointer to array"),
             ConstArray(_, _)     |
@@ -169,7 +181,7 @@ impl VkElType {
         }
     }
 
-    fn set_array_len(&mut self, size_enum: *const c_char) {
+    fn set_array_len(&mut self, size_enum: *const str) {
         use VkElType::*;
         match *self {
             Var(_)                      => panic!("Attempted to set array length of Var"),
@@ -211,26 +223,25 @@ impl fmt::Debug for VkElType {
             write!(fmt, "Void")
         } else {
             let pt;
-            let mut pt_enum = None;
             let mut fmt_tuple = fmt.debug_tuple(
                 match *self {
-                    Var(p)                => {pt = p; "Var"}
-                    Const(p)              => {pt = p; "Const"}
-                    ConstPtr(p)           => {pt = p; "ConstPtr"}
-                    MutPtr(p)             => {pt = p; "MutPtr"}
-                    ConstArray(p, _)      => {pt = p; "ConstArray"}
-                    ConstArrayEnum(p, en) => {pt = p; pt_enum = Some(en); "ConstArrayEnum"}
-                    MutArray(p, _)        => {pt = p; "MutArray"}
-                    MutArrayEnum(p, en)   => {pt = p; pt_enum = Some(en); "MutArrayEnum"}
-                    Void                   |
-                    Unknown               => unreachable!()
+                    Var(p)               => {pt = p; "Var"}
+                    Const(p)             => {pt = p; "Const"}
+                    ConstPtr(p)          => {pt = p; "ConstPtr"}
+                    MutPtr(p)            => {pt = p; "MutPtr"}
+                    ConstArray(p, _)     => {pt = p; "ConstArray"}
+                    ConstArrayEnum(p, _) => {pt = p; "ConstArrayEnum"}
+                    MutArray(p, _)       => {pt = p; "MutArray"}
+                    MutArrayEnum(p,_)    => {pt = p; "MutArrayEnum"}
+                    Void                  |
+                    Unknown              => unreachable!()
                 });
-            fmt_tuple.field(unsafe{ &if pt != ptr::null() {CStr::from_ptr(pt).to_str().unwrap()} else {"Error: Null Ptr"} });
+            fmt_tuple.field(&to_option(pt));
             match *self {
                 ConstArray(_, s)     |
                 MutArray(_, s)      => fmt_tuple.field(&s),
                 ConstArrayEnum(_, e) |
-                MutArrayEnum(_, e)  => fmt_tuple.field(unsafe{ &if pt != ptr::null() {CStr::from_ptr(e).to_str().unwrap()} else {"Error: Null Ptr"} }),
+                MutArrayEnum(_, e)  => fmt_tuple.field(&to_option(e)),
                 _                   => &mut fmt_tuple
             }.finish()
         }
@@ -239,7 +250,7 @@ impl fmt::Debug for VkElType {
 
 struct VkMember {
     field_type: VkElType,
-    field_name: *const c_char,
+    field_name: *const str,
     optional: bool
 }
 
@@ -247,7 +258,7 @@ impl fmt::Debug for VkMember {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         fmt .debug_struct("VkMember")
             .field("type", &self.field_type)
-            .field("name", unsafe{ &CStr::from_ptr(self.field_name) })
+            .field("name", &to_option(self.field_name))
             .field("optional", &self.optional)
             .finish()
     }
@@ -257,7 +268,7 @@ impl VkMember {
     fn empty() -> VkMember {
         VkMember {
             field_type: VkElType::Unknown,
-            field_name: ptr::null(),
+            field_name: null_str(),
             optional: false
         }
     }
@@ -265,13 +276,13 @@ impl VkMember {
     fn optional() -> VkMember {
         VkMember {
             field_type: VkElType::Unknown,
-            field_name: ptr::null(),
+            field_name: null_str(),
             optional: true
         }
     }
 
-    fn set_name(&mut self, field_name: *const c_char) {
-        if self.field_name != ptr::null() {
+    fn set_name(&mut self, field_name: *const str) {
+        if self.field_name != null_str() {
             panic!("Unexpected \"name\" tag");
         } else {
             self.field_name = field_name;
@@ -282,18 +293,18 @@ impl VkMember {
 /// A variant of a vulkan enum
 enum VkVariant {
     Value {
-        name: *const c_char,
+        name: *const str,
         value: isize
     },
 
     Bitpos {
-        name: *const c_char,
+        name: *const str,
         bitpos: isize
     },
 
     ApiConst {
-        name: *const c_char,
-        value: *const c_char
+        name: *const str,
+        value: *const str
     }
 }
 
@@ -308,31 +319,31 @@ impl fmt::Debug for VkVariant {
                 Bitpos{name, ..}   => {pt = name; "Bitpos"}
                 ApiConst{name, ..} => {pt = name; "ApiConst"}
             });
-        fmt_struct.field("name", unsafe{ &if pt != ptr::null() {CStr::from_ptr(pt).to_str().unwrap()} else {"Error: Null Ptr"} });
+        fmt_struct.field("name", &to_option(pt));
         match *self {
             Value{value, ..} => fmt_struct.field("value", &value),
             Bitpos{bitpos, ..} => fmt_struct.field("bitpos", &bitpos),
-            ApiConst{value, ..} => fmt_struct.field("value", unsafe{ &if value != ptr::null() {CStr::from_ptr(value).to_str().unwrap()} else {"Error: Null Ptr"} })
+            ApiConst{value, ..} => fmt_struct.field("value", &to_option(value))
         }.finish()
     }
 }
 
 impl VkVariant {
-    fn new_value(name: *const c_char, value: isize) -> VkVariant {
+    fn new_value(name: *const str, value: isize) -> VkVariant {
         VkVariant::Value {
             name: name,
             value: value
         }
     }
 
-    fn new_bitpos(name: *const c_char, bitpos: isize) -> VkVariant {
+    fn new_bitpos(name: *const str, bitpos: isize) -> VkVariant {
         VkVariant::Bitpos {
             name: name,
             bitpos: bitpos
         }
     }
 
-    fn new_const(name: *const c_char, value: *const c_char) -> VkVariant {
+    fn new_const(name: *const str, value: *const str) -> VkVariant {
         VkVariant::ApiConst {
             name: name,
             value: value
@@ -340,34 +351,33 @@ impl VkVariant {
     }
 }
 
-#[derive(Debug)]
 enum VkType {
     Struct {
-        name: *const c_char,
+        name: *const str,
         fields: Vec<VkMember>
     },
 
     Union {
-        name: *const c_char,
+        name: *const str,
         variants: Vec<VkMember>
     },
 
     Enum {
-        name: *const c_char,
+        name: *const str,
         variants: Vec<VkVariant>
     },
 
     Handle {
-        name: *const c_char,
+        name: *const str,
         validity: bool,
         dispatchable: bool
     },
 
     TypeDef {
         /// The type that is being aliased
-        typ: *const c_char,
+        typ: *const str,
         /// The name of the new type
-        name: *const c_char,
+        name: *const str,
         validity: u8
     },
 
@@ -375,21 +385,21 @@ enum VkType {
 }
 
 impl VkType {
-    fn new_struct(name: *const c_char) -> VkType {
+    fn new_struct(name: *const str) -> VkType {
         VkType::Struct {
             name: name,
             fields: Vec::with_capacity(8)
         }
     }
 
-    fn new_union(name: *const c_char) -> VkType {
+    fn new_union(name: *const str) -> VkType {
         VkType::Union {
             name: name,
             variants: Vec::with_capacity(8)
         }
     }
 
-    fn new_enum(name: *const c_char) -> VkType {
+    fn new_enum(name: *const str) -> VkType {
         VkType::Enum {
             name: name,
             variants: Vec::with_capacity(8)
@@ -398,7 +408,7 @@ impl VkType {
 
     fn empty_handle() -> VkType {
         VkType::Handle {
-            name: ptr::null(),
+            name: null_str(),
             validity: false,
             dispatchable: true
         }
@@ -407,8 +417,8 @@ impl VkType {
     fn empty_typedef() -> VkType {
         use tdvalid::*;
         VkType::TypeDef {
-            typ: ptr::null(),
-            name: ptr::null(),
+            typ: null_str(),
+            name: null_str(),
             validity: NOSEMICOLON | NOTYPEDEF
         }
     }
@@ -423,7 +433,7 @@ mod tdvalid {
 struct VkCommand {
     /// The return value
     ret: VkElType,
-    name: *const c_char,
+    name: *const str,
     params: Vec<VkParam>
 }
 
@@ -431,7 +441,7 @@ impl fmt::Debug for VkCommand {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         fmt .debug_struct("VkCommand")
             .field("ret", &self.ret)
-            .field("name", unsafe{ &if self.name != ptr::null() {CStr::from_ptr(self.name).to_str().unwrap()} else {"Error: Null Ptr"} })
+            .field("name", &to_option(self.name))
             .field("params", &self.params)
             .finish()
     }
@@ -441,7 +451,7 @@ impl VkCommand {
     fn empty() -> VkCommand {
         VkCommand {
             ret: VkElType::Unknown,
-            name: ptr::null(),
+            name: null_str(),
             params: Vec::with_capacity(8)
         }
     }
@@ -449,22 +459,23 @@ impl VkCommand {
 
 struct VkParam {
     typ: VkElType,
-    name: *const c_char
+    name: *const str
 }
 
 impl fmt::Debug for VkParam {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         fmt .debug_struct("VkParam")
             .field("typ", &self.typ)
-            .field("name", unsafe{ &if self.name != ptr::null() {CStr::from_ptr(self.name).to_str().unwrap()} else {"Error: Null Ptr"} })
+            .field("name", &to_option(self.name))
             .finish()
     }
 }
+
 impl VkParam {
     fn empty() -> VkParam {
         VkParam {
             typ: VkElType::Unknown,
-            name: ptr::null()
+            name: null_str()
         }
     }
 }

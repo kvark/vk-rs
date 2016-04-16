@@ -5,11 +5,10 @@ use xml::name::OwnedName;
 use xml::attribute::OwnedAttribute;
 use std::io::Read;
 use std::slice::Iter;
-use std::ffi::CStr;
 use std::num::ParseIntError;
 use ::{VkRegistry, VkType, VkMember, VkVariant, VkCommand, VkParam};
 
-pub fn crawl<R: Read>(xml_events: Events<R>, mut registry: VkRegistry) -> VkRegistry {
+pub fn crawl<R: Read>(xml_events: Events<R>, registry: &mut VkRegistry) {
     use self::XmlElement::*;
 
     let mut type_buffer = VkType::Unhandled;
@@ -30,23 +29,20 @@ pub fn crawl<R: Read>(xml_events: Events<R>, mut registry: VkRegistry) -> VkRegi
                 vk_elements.push(XmlElement::new_tag(name, attributes));
             }
 
-            XmlEvent::EndElement{ name } => {
+            XmlEvent::EndElement{..} => {
                 for el in &vk_elements[popped_to..] {
                     use tdvalid::*;
                     match *el {
                         Tag{name: ref tag_name, attributes: ref tag_attrs} => 
                             match &tag_name[..] {
-                                "types"      => cur_block = VkBlock::Types,
-                                "commands"   => cur_block = VkBlock::Commands,
                                 "extensions" => cur_block = VkBlock::Extensions,
-                                "feature"    => cur_block = VkBlock::Feature,
+
                                 "enums"      => 
                                     if let Some(name) = find_attribute(tag_attrs, "name") {
                                         cur_block = VkBlock::Enums;
                                         registry.push_type(type_buffer).ok();
                                         type_buffer = VkType::new_enum(registry.append_str(name));
                                     } else {panic!("Could not find enum name")},
-
                                 "enum"
                                     if VkBlock::Enums == cur_block =>
                                     if let Some(name) = find_attribute(tag_attrs, "name") {
@@ -54,7 +50,7 @@ pub fn crawl<R: Read>(xml_events: Events<R>, mut registry: VkRegistry) -> VkRegi
                                             let name = registry.append_str(name);
 
                                             variants.push(
-                                                if "API Constants" == unsafe{ CStr::from_ptr(enum_name).to_str().unwrap() } {
+                                                if "API Constants" == unsafe{ &*enum_name } {
                                                     if let Some(value) = find_attribute(tag_attrs, "value") {
                                                         VkVariant::new_const(name, registry.append_str(value))
                                                     } else {panic!("Could not find value in API Constant")}
@@ -69,6 +65,7 @@ pub fn crawl<R: Read>(xml_events: Events<R>, mut registry: VkRegistry) -> VkRegi
                                     } else {panic!("Could not find enum variant name")},
                                 "enum"       => (),
 
+                                "types"      => cur_block = VkBlock::Types,
                                 "type"
                                     if VkBlock::Types == cur_block =>
                                     if let Some(category) = find_attribute(tag_attrs, "category") {
@@ -90,7 +87,6 @@ pub fn crawl<R: Read>(xml_events: Events<R>, mut registry: VkRegistry) -> VkRegi
                                         }
                                     },
                                 "type"       => (),
-
                                 "member"
                                     if VkBlock::Types == cur_block =>
                                     match type_buffer {
@@ -103,15 +99,16 @@ pub fn crawl<R: Read>(xml_events: Events<R>, mut registry: VkRegistry) -> VkRegi
                                     },
                                 "member"     => panic!("\"member\" tag found outside of \"types\" block"),
 
+                                "commands"   => cur_block = VkBlock::Commands,
                                 "command"
                                     if VkBlock::Commands == cur_block => {
                                         registry.push_command(command_buffer).ok();
                                         command_buffer = Some(VkCommand::empty());
                                     }
                                 "param"
-                                    if VkBlock::Commands == cur_block => {
-                                        command_buffer.as_mut().unwrap().params.push(VkParam::empty());
-                                    },
+                                    if VkBlock::Commands == cur_block => command_buffer.as_mut().unwrap().params.push(VkParam::empty()),
+
+                                "feature" => cur_block = VkBlock::Feature,
 
                                 _ => ()
                             },
@@ -179,7 +176,6 @@ pub fn crawl<R: Read>(xml_events: Events<R>, mut registry: VkRegistry) -> VkRegi
 
                         Characters{ref chars, tags: (tag, Some(tag1))}
                             if VkBlock::Commands == cur_block => {
-                                use std::mem;
                                 let chars = &chars[..];
                                 let command_buffer = command_buffer.as_mut().unwrap();
 
@@ -242,21 +238,21 @@ pub fn crawl<R: Read>(xml_events: Events<R>, mut registry: VkRegistry) -> VkRegi
         unsafe {
             match *t {
                 VkType::Struct{name, ref fields}  => {
-                    println!("Struct {:?}", CStr::from_ptr(name));
+                    println!("Struct {:?}", &*name);
                     for f in fields {
                         println!("\t{:?}", f);
                     }
                 }
 
                 VkType::Union{name, ref variants} => {
-                    println!("Union {:?}", CStr::from_ptr(name));
+                    println!("Union {:?}", &*name);
                     for v in variants {
                         println!("\t{:?}", v);
                     }
                 }
 
                 VkType::Enum{name, ref variants} => {
-                    println!("Enum {:?}", CStr::from_ptr(name));
+                    println!("Enum {:?}", &*name);
                     for v in variants {
                         println!("\t{:?}", v);
                     }
@@ -266,16 +262,16 @@ pub fn crawl<R: Read>(xml_events: Events<R>, mut registry: VkRegistry) -> VkRegi
                     if validity != 0 {
                         panic!("Invalid typedef")
                     } else {
-                        println!("TypeDef {:?} {:?}", CStr::from_ptr(typ), CStr::from_ptr(name))
+                        println!("TypeDef {:?} {:?}", &*typ, &*name)
                     },
 
                 VkType::Handle{name, validity, dispatchable} =>
                     if !validity {
                         panic!("Invalid handle")
                     } else if dispatchable {
-                        println!("Handle {:?}", CStr::from_ptr(name))
+                        println!("Handle {:?}", &*name)
                     } else {
-                        println!("Non-Dispatchable Handle {:?}", CStr::from_ptr(name))
+                        println!("Non-Dispatchable Handle {:?}", &*name)
                     },
 
                 _ => ()
@@ -286,8 +282,6 @@ pub fn crawl<R: Read>(xml_events: Events<R>, mut registry: VkRegistry) -> VkRegi
     for c in &registry.commands {
         println!("{:#?}", c);
     }
-
-    registry
 }
 
 fn to_isize(source: &str) -> Result<isize, ParseIntError> {
