@@ -6,7 +6,7 @@ use xml::attribute::OwnedAttribute;
 use std::io::Read;
 use std::slice::Iter;
 use std::num::ParseIntError;
-use ::{VkRegistry, VkType, VkMember, VkVariant, VkCommand, VkParam, VkFeature, VkVersion, VkReqRem};
+use ::{VkRegistry, VkType, VkMember, VkVariant, VkCommand, VkParam, VkFeature, VkVersion, VkReqRem, VkExtn};
 
 pub fn crawl<R: Read>(xml_events: Events<R>, registry: &mut VkRegistry) {
     use self::XmlElement::*;
@@ -14,7 +14,8 @@ pub fn crawl<R: Read>(xml_events: Events<R>, registry: &mut VkRegistry) {
     let mut type_buffer = VkType::Unhandled;
     let mut command_buffer: Option<VkCommand> = None;
     let mut feature_buffer: Option<VkFeature> = None;
-    let mut feature_reqrem = VkReqRem::None;
+    let mut interface_reqrem = VkReqRem::None;
+    let mut extn_buffer: Option<VkExtn> = None;
     let mut cur_block = VkBlock::None;
     // A variable that contains what the index of the element in vk_elements that vk_elements was
     // popped to. Used to prevent the element iterator from going over elements that have already
@@ -37,8 +38,6 @@ pub fn crawl<R: Read>(xml_events: Events<R>, registry: &mut VkRegistry) {
                     match *el {
                         Tag{name: ref tag_name, attributes: ref tag_attrs} => 
                             match &tag_name[..] {
-                                "extensions" => cur_block = VkBlock::Extensions,
-
                                 "enums"      => 
                                     if let Some(name) = find_attribute(tag_attrs, "name") {
                                         cur_block = VkBlock::Enums;
@@ -118,26 +117,82 @@ pub fn crawl<R: Read>(xml_events: Events<R>, registry: &mut VkRegistry) {
                                     } else {panic!("Could not find feature name")},
                                 "require"
                                     if VkBlock::Feature == cur_block => 
-                                    feature_reqrem = VkReqRem::Require(find_attribute(tag_attrs, "profile").map(|s| registry.append_str(s))),
+                                    interface_reqrem = VkReqRem::Require(find_attribute(tag_attrs, "profile").map(|s| registry.append_str(s))),
                                 "remove"
                                     if VkBlock::Feature == cur_block =>
-                                    feature_reqrem = VkReqRem::Remove(find_attribute(tag_attrs, "profile").map(|s| registry.append_str(s))),
+                                    interface_reqrem = VkReqRem::Remove(find_attribute(tag_attrs, "profile").map(|s| registry.append_str(s))),
                                 "command"
                                     if VkBlock::Feature == cur_block =>
                                     if let Some(name) = find_attribute(tag_attrs, "name") {
-                                        feature_buffer.as_mut().unwrap().push_command(registry.append_str(name), &feature_reqrem);
+                                        feature_buffer.as_mut().unwrap().push_command(registry.append_str(name), &interface_reqrem);
                                     } else {panic!("Could not find feature name")},
                                 "enum"
                                     if VkBlock::Feature == cur_block =>
                                     if let Some(name) = find_attribute(tag_attrs, "name") {
-                                        feature_buffer.as_mut().unwrap().push_enum(registry.append_str(name), &feature_reqrem);
+                                        feature_buffer.as_mut().unwrap().push_enum(registry.append_str(name), &interface_reqrem);
                                     } else {panic!("Could not find feature name")},
                                 "type"
                                     if VkBlock::Feature == cur_block =>
                                     if let Some(name) = find_attribute(tag_attrs, "name") {
-                                        feature_buffer.as_mut().unwrap().push_type(registry.append_str(name), &feature_reqrem);
+                                        feature_buffer.as_mut().unwrap().push_type(registry.append_str(name), &interface_reqrem);
                                     } else {panic!("Could not find feature name")},
 
+                                "extensions" => cur_block = VkBlock::Extensions,
+                                "extension"
+                                    if VkBlock::Extensions == cur_block =>
+                                    if let Some(name) = find_attribute(tag_attrs, "name") {
+                                        if let Some(num) = find_attribute(tag_attrs, "number") {
+                                            registry.push_extn(extn_buffer).ok();
+                                            extn_buffer = Some(VkExtn::new(registry.append_str(name), isize::from_str_radix(num, 10).unwrap()))
+                                        } else {panic!("Could not find extension number")}
+                                    } else {panic!("Could not find extension name")},
+                                "command"
+                                    if VkBlock::Extensions == cur_block =>
+                                    if let Some(name) = find_attribute(tag_attrs, "name") {
+                                        extn_buffer.as_mut().unwrap().push_command(registry.append_str(name), &interface_reqrem);
+                                    } else {panic!("Could not find extension command name")},
+                                "type"
+                                    if VkBlock::Extensions == cur_block =>
+                                    if let Some(name) = find_attribute(tag_attrs, "name") {
+                                        extn_buffer.as_mut().unwrap().push_type(registry.append_str(name), &interface_reqrem);
+                                    } else {panic!("Could not find extension type name")},
+                                "enum"
+                                    if VkBlock::Extensions == cur_block =>
+                                    if let Some(name) = find_attribute(tag_attrs, "name") {
+                                        let name = registry.append_str(name);
+
+                                        if let Some(extends) = find_attribute(tag_attrs, "extends") {
+                                            let variant =
+                                                if let Some(offset) = find_attribute(tag_attrs, "offset") {
+                                                    // Determine enumerant value, as defined in the "Layers & Extensions" appendix of the spec
+                                                    let offset = isize::from_str_radix(offset, 10).unwrap();
+                                                    let extn_num = extn_buffer.as_ref().unwrap().num;
+                                                    let mut value = BASE_VALUE + (extn_num - 1) * RANGE_SIZE + offset;
+
+                                                    if let Some("-") = find_attribute(tag_attrs, "dir") {
+                                                        value = -value;
+                                                    }
+
+                                                    VkVariant::new_value(name, value)
+                                                } else if let Some(value) = find_attribute(tag_attrs, "value") {
+                                                    let value = isize::from_str_radix(value, 10).unwrap();
+                                                    VkVariant::new_value(name, value)
+                                                } else if let Some(bitpos) = find_attribute(tag_attrs, "bitpos") {
+                                                    let bitpos = isize::from_str_radix(bitpos, 10).unwrap();
+                                                    VkVariant::new_bitpos(name, bitpos)
+                                                } else {panic!("Invalid enum extension; missing \"offset\" or \"bitpos\"")};
+
+                                            extn_buffer.as_mut().unwrap().push_enum(
+                                                variant,
+                                                Some(registry.append_str(extends)),
+                                                &interface_reqrem);
+                                        } else if let Some(value) = find_attribute(tag_attrs, "value") {
+                                            extn_buffer.as_mut().unwrap().push_enum(
+                                                VkVariant::new_const(name, registry.append_str(value)),
+                                                None, 
+                                                &interface_reqrem);
+                                        }
+                                    } else {panic!("Could not find enum name")},
                                 _ => ()
                             },
 
@@ -262,6 +317,7 @@ pub fn crawl<R: Read>(xml_events: Events<R>, registry: &mut VkRegistry) {
     registry.push_type(type_buffer).ok();
     registry.push_command(command_buffer).ok();
     registry.push_feature(feature_buffer).ok();
+    registry.push_extn(extn_buffer).ok();
 
     for t in &registry.types {
         unsafe {
@@ -315,11 +371,22 @@ pub fn crawl<R: Read>(xml_events: Events<R>, registry: &mut VkRegistry) {
     for f in &registry.features {
         println!("Feature: {:?}", ::to_option(f.name));
         for req in &f.require {
-            println!("Require: {:?}", req);
+            println!("\tRequire: {:?}", req);
         }
 
         for rem in &f.remove {
-            println!("Remove: {:?}", rem);
+            println!("\tRemove: {:?}", rem);
+        }
+    }
+
+    for e in &registry.extns {
+        println!("Extension: {:?}", ::to_option(e.name));
+        for req in &e.require {
+            println!("\tRequire: {:?}", req);
+        }
+
+        for rem in &e.remove {
+            println!("\tRemove: {:?}", rem);
         }
     }
 }
@@ -439,3 +506,6 @@ enum VkBlock {
     Feature,
     None
 }
+
+const BASE_VALUE: isize = 1000000000;
+const RANGE_SIZE: isize = 1000;

@@ -29,7 +29,8 @@ pub struct VkRegistry {
     string_buffer: String,
     types: Vec<VkType>,
     commands: Vec<VkCommand>,
-    features: Vec<VkFeature>
+    features: Vec<VkFeature>,
+    extns: Vec<VkExtn>
 }
 
 impl VkRegistry {
@@ -38,7 +39,8 @@ impl VkRegistry {
             string_buffer: String::with_capacity(capacity),
             types: Vec::with_capacity(256),
             commands: Vec::with_capacity(128),
-            features: Vec::with_capacity(4)
+            features: Vec::with_capacity(4),
+            extns: Vec::with_capacity(64)
         }
     }
 
@@ -59,6 +61,13 @@ impl VkRegistry {
     fn push_feature(&mut self, feature: Option<VkFeature>) -> Result<(), ()> {
         if let Some(feat) = feature {
             self.features.push(feat);
+            Ok(())
+        } else {Err(())}
+    }
+
+    fn push_extn(&mut self, extn: Option<VkExtn>) -> Result<(), ()> {
+        if let Some(ex) = extn {
+            self.extns.push(ex);
             Ok(())
         } else {Err(())}
     }
@@ -535,8 +544,8 @@ impl VkFeature {
         use VkReqRem::*;
 
         match *reqrem {
-            Require(profile) => self.require.push(VkInterface::new_enum(name, profile)),
-            Remove(profile)  => self.remove.push(VkInterface::new_enum(name, profile)),
+            Require(profile) => self.require.push(VkInterface::new_ref_enum(name, profile)),
+            Remove(profile)  => self.remove.push(VkInterface::new_ref_enum(name, profile)),
             None             => panic!("Invalid reqrem")
         }
     }
@@ -552,54 +561,88 @@ impl VkFeature {
     }
 }
 
-struct VkInterface {
-    name: *const str,
-    profile: *const str,
-    typ: VkInterfaceType
+enum VkInterface {
+    Command {
+        name: *const str,
+        profile: *const str
+    },
+
+    Type {
+        name: *const str,
+        profile: *const str
+    },
+
+    RefEnum {
+        name: *const str,
+        profile: *const str
+    },
+
+    ExtnEnum {
+        extends: *const str,
+        profile: *const str,
+        variant: VkVariant
+    }
 }
 
 impl fmt::Debug for VkInterface {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        fmt.debug_struct("VkInterface")
-           .field("name", &to_option(self.name))
-           .field("profile", &to_option(self.profile))
-           .field("typ", &self.typ)
-           .finish()
+        use VkInterface::*;
+
+        let mut fmt_struct = fmt.debug_struct(
+            match *self {
+                Command{..}  => "Command",
+                Type{..}     => "Type",
+                RefEnum{..}  => "RefEnum",
+                ExtnEnum{..} => "ExtnEnum"
+            });
+        match *self {
+            Command{name, profile}  |
+            Type{name, profile}     |
+            RefEnum{name, profile} =>
+                fmt_struct.field("name", &to_option(name))
+                          .field("profile", &to_option(profile))
+                          .finish(),
+            ExtnEnum{extends,
+                     profile, 
+                     ref variant}  =>
+                fmt_struct.field("extends", &to_option(extends))
+                          .field("profile", &to_option(profile))
+                          .field("variant", &*variant)
+                          .finish()
+
+        }
     }
 }
 
 impl VkInterface {
     fn new_command(name: *const str, profile: Option<*const str>) -> VkInterface {
-        VkInterface {
-            typ: VkInterfaceType::Command,
-            name: name,
-            profile: profile.unwrap_or(null_str())
-        }
-    }
-
-    fn new_enum(name: *const str, profile: Option<*const str>) -> VkInterface {
-        VkInterface {
-            typ: VkInterfaceType::Enum,
+        VkInterface::Command {
             name: name,
             profile: profile.unwrap_or(null_str())
         }
     }
 
     fn new_type(name: *const str, profile: Option<*const str>) -> VkInterface {
-        VkInterface {
-            typ: VkInterfaceType::Type,
+        VkInterface::Type {
             name: name,
             profile: profile.unwrap_or(null_str())
         }
     }
-}
 
-#[repr(u8)]
-#[derive(Debug)]
-enum VkInterfaceType {
-    Command,
-    Enum,
-    Type
+    fn new_ref_enum(name: *const str, profile: Option<*const str>) -> VkInterface {
+        VkInterface::RefEnum {
+            name: name,
+            profile: profile.unwrap_or(null_str())
+        }
+    }
+
+    fn new_extn_enum(variant: VkVariant, extends: Option<*const str>, profile: Option<*const str>) -> VkInterface {
+        VkInterface::ExtnEnum {
+            extends: extends.unwrap_or(null_str()),
+            profile: profile.unwrap_or(null_str()),
+            variant: variant
+        }
+    }
 }
 
 /// When loading a VkFeature, this stores whether or not we're in a require or remove block.
@@ -607,4 +650,53 @@ enum VkReqRem {
     Require(Option<*const str>),
     Remove(Option<*const str>),
     None
+}
+
+struct VkExtn {
+    name: *const str,
+    num: isize,
+    require: Vec<VkInterface>,
+    remove: Vec<VkInterface>
+}
+
+impl VkExtn {
+    fn new(name: *const str, num: isize) -> VkExtn {
+        VkExtn {
+            name: name,
+            num: num,
+            require: Vec::with_capacity(8),
+            // Most, if not all, extensions don't have remove tags so this is just here for contingency
+            remove: Vec::new()
+        }
+    }
+
+    fn push_command(&mut self, name: *const str, reqrem: &VkReqRem) {
+        use VkReqRem::*;
+
+        match *reqrem {
+            Require(profile) => self.require.push(VkInterface::new_command(name, profile)),
+            Remove(profile)  => self.remove.push(VkInterface::new_command(name, profile)),
+            None             => panic!("Invalid reqrem")
+        }
+    }
+
+    fn push_enum(&mut self, variant: VkVariant, extends: Option<*const str>, reqrem: &VkReqRem) {
+        use VkReqRem::*;
+
+        match *reqrem {
+            Require(profile) => self.require.push(VkInterface::new_extn_enum(variant, extends, profile)),
+            Remove(profile)  => self.remove.push(VkInterface::new_extn_enum(variant, extends, profile)),
+            None             => panic!("Invalid reqrem")
+        }
+    }
+
+    fn push_type(&mut self, name: *const str, reqrem: &VkReqRem) {
+        use VkReqRem::*;
+
+        match *reqrem {
+            Require(profile) => self.require.push(VkInterface::new_type(name, profile)),
+            Remove(profile)  => self.remove.push(VkInterface::new_type(name, profile)),
+            None             => panic!("Invalid reqrem")
+        }
+    }
 }
