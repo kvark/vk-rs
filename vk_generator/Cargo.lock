@@ -2,7 +2,7 @@
 name = "vk_generator"
 version = "0.0.1"
 dependencies = [
- "vk_api 1.0.9",
+ "vk_api 1.0.10",
  "xml-rs 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
@@ -13,7 +13,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
 name = "vk_api"
-version = "1.0.9"
+version = "1.0.10"
 
 [[package]]
 name = "xml-rs"

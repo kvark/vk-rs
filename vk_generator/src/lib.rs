@@ -29,6 +29,7 @@ pub struct VkRegistry {
     string_buffer: String,
     types: Vec<VkType>,
     commands: Vec<VkCommand>,
+    features: Vec<VkFeature>
 }
 
 impl VkRegistry {
@@ -37,6 +38,7 @@ impl VkRegistry {
             string_buffer: String::with_capacity(capacity),
             types: Vec::with_capacity(256),
             commands: Vec::with_capacity(128),
+            features: Vec::with_capacity(4)
         }
     }
 
@@ -50,6 +52,13 @@ impl VkRegistry {
     fn push_command(&mut self, vk_command: Option<VkCommand>) -> Result<(), ()> {
         if let Some(cmd) = vk_command {
             self.commands.push(cmd);
+            Ok(())
+        } else {Err(())}
+    }
+
+    fn push_feature(&mut self, feature: Option<VkFeature>) -> Result<(), ()> {
+        if let Some(feat) = feature {
+            self.features.push(feat);
             Ok(())
         } else {Err(())}
     }
@@ -478,4 +487,124 @@ impl VkParam {
             name: null_str()
         }
     }
+}
+
+struct VkVersion(u16, u16, u16);
+
+impl VkVersion {
+    fn from_str(num: &str) -> VkVersion {
+        use std::u16;
+
+        let mut ver = [0; 3];
+        for (i, digit) in num.split('.').enumerate() {
+            ver[i] = u16::from_str_radix(digit, 10).unwrap();
+        }
+
+        VkVersion(ver[0], ver[1], ver[2])
+    }
+}
+
+struct VkFeature {
+    name: *const str,
+    version: VkVersion,
+    require: Vec<VkInterface>,
+    remove: Vec<VkInterface>
+}
+
+impl VkFeature {
+    fn new(name: *const str, version: VkVersion) -> VkFeature {
+        VkFeature {
+            name: name,
+            version: version,
+            require: Vec::with_capacity(16),
+            remove: Vec::with_capacity(16)
+        }
+    }
+
+    fn push_command(&mut self, name: *const str, reqrem: &VkReqRem) {
+        use VkReqRem::*;
+
+        match *reqrem {
+            Require(profile) => self.require.push(VkInterface::new_command(name, profile)),
+            Remove(profile)  => self.remove.push(VkInterface::new_command(name, profile)),
+            None             => panic!("Invalid reqrem")
+        }
+    }
+
+    fn push_enum(&mut self, name: *const str, reqrem: &VkReqRem) {
+        use VkReqRem::*;
+
+        match *reqrem {
+            Require(profile) => self.require.push(VkInterface::new_enum(name, profile)),
+            Remove(profile)  => self.remove.push(VkInterface::new_enum(name, profile)),
+            None             => panic!("Invalid reqrem")
+        }
+    }
+
+    fn push_type(&mut self, name: *const str, reqrem: &VkReqRem) {
+        use VkReqRem::*;
+
+        match *reqrem {
+            Require(profile) => self.require.push(VkInterface::new_type(name, profile)),
+            Remove(profile)  => self.remove.push(VkInterface::new_type(name, profile)),
+            None             => panic!("Invalid reqrem")
+        }
+    }
+}
+
+struct VkInterface {
+    name: *const str,
+    profile: *const str,
+    typ: VkInterfaceType
+}
+
+impl fmt::Debug for VkInterface {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        fmt.debug_struct("VkInterface")
+           .field("name", &to_option(self.name))
+           .field("profile", &to_option(self.profile))
+           .field("typ", &self.typ)
+           .finish()
+    }
+}
+
+impl VkInterface {
+    fn new_command(name: *const str, profile: Option<*const str>) -> VkInterface {
+        VkInterface {
+            typ: VkInterfaceType::Command,
+            name: name,
+            profile: profile.unwrap_or(null_str())
+        }
+    }
+
+    fn new_enum(name: *const str, profile: Option<*const str>) -> VkInterface {
+        VkInterface {
+            typ: VkInterfaceType::Enum,
+            name: name,
+            profile: profile.unwrap_or(null_str())
+        }
+    }
+
+    fn new_type(name: *const str, profile: Option<*const str>) -> VkInterface {
+        VkInterface {
+            typ: VkInterfaceType::Type,
+            name: name,
+            profile: profile.unwrap_or(null_str())
+        }
+    }
+}
+
+#[repr(u8)]
+#[derive(Debug)]
+enum VkInterfaceType {
+    Command,
+    Enum,
+    Type
+}
+
+/// When loading a VkFeature, this stores whether or not we're in a require or remove block.
+enum VkReqRem {
+    Require(Option<*const str>),
+    Remove(Option<*const str>),
+    None
 }

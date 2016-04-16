@@ -6,13 +6,15 @@ use xml::attribute::OwnedAttribute;
 use std::io::Read;
 use std::slice::Iter;
 use std::num::ParseIntError;
-use ::{VkRegistry, VkType, VkMember, VkVariant, VkCommand, VkParam};
+use ::{VkRegistry, VkType, VkMember, VkVariant, VkCommand, VkParam, VkFeature, VkVersion, VkReqRem};
 
 pub fn crawl<R: Read>(xml_events: Events<R>, registry: &mut VkRegistry) {
     use self::XmlElement::*;
 
     let mut type_buffer = VkType::Unhandled;
     let mut command_buffer: Option<VkCommand> = None;
+    let mut feature_buffer: Option<VkFeature> = None;
+    let mut feature_reqrem = VkReqRem::None;
     let mut cur_block = VkBlock::None;
     // A variable that contains what the index of the element in vk_elements that vk_elements was
     // popped to. Used to prevent the element iterator from going over elements that have already
@@ -63,7 +65,6 @@ pub fn crawl<R: Read>(xml_events: Events<R>, registry: &mut VkRegistry) {
                                             );
                                         }
                                     } else {panic!("Could not find enum variant name")},
-                                "enum"       => (),
 
                                 "types"      => cur_block = VkBlock::Types,
                                 "type"
@@ -86,7 +87,6 @@ pub fn crawl<R: Read>(xml_events: Events<R>, registry: &mut VkRegistry) {
                                             _               => panic!("Unexpected category")
                                         }
                                     },
-                                "type"       => (),
                                 "member"
                                     if VkBlock::Types == cur_block =>
                                     match type_buffer {
@@ -108,7 +108,35 @@ pub fn crawl<R: Read>(xml_events: Events<R>, registry: &mut VkRegistry) {
                                 "param"
                                     if VkBlock::Commands == cur_block => command_buffer.as_mut().unwrap().params.push(VkParam::empty()),
 
-                                "feature" => cur_block = VkBlock::Feature,
+                                "feature"    => 
+                                    if let Some(name) = find_attribute(tag_attrs, "name") {
+                                        if let Some(version) = find_attribute(tag_attrs, "number") {
+                                            cur_block = VkBlock::Feature;
+                                            registry.push_feature(feature_buffer).ok();
+                                            feature_buffer = Some(VkFeature::new(registry.append_str(name), VkVersion::from_str(version)));
+                                        } else {panic!("Could not find feature number")}
+                                    } else {panic!("Could not find feature name")},
+                                "require"
+                                    if VkBlock::Feature == cur_block => 
+                                    feature_reqrem = VkReqRem::Require(find_attribute(tag_attrs, "profile").map(|s| registry.append_str(s))),
+                                "remove"
+                                    if VkBlock::Feature == cur_block =>
+                                    feature_reqrem = VkReqRem::Remove(find_attribute(tag_attrs, "profile").map(|s| registry.append_str(s))),
+                                "command"
+                                    if VkBlock::Feature == cur_block =>
+                                    if let Some(name) = find_attribute(tag_attrs, "name") {
+                                        feature_buffer.as_mut().unwrap().push_command(registry.append_str(name), &feature_reqrem);
+                                    } else {panic!("Could not find feature name")},
+                                "enum"
+                                    if VkBlock::Feature == cur_block =>
+                                    if let Some(name) = find_attribute(tag_attrs, "name") {
+                                        feature_buffer.as_mut().unwrap().push_enum(registry.append_str(name), &feature_reqrem);
+                                    } else {panic!("Could not find feature name")},
+                                "type"
+                                    if VkBlock::Feature == cur_block =>
+                                    if let Some(name) = find_attribute(tag_attrs, "name") {
+                                        feature_buffer.as_mut().unwrap().push_type(registry.append_str(name), &feature_reqrem);
+                                    } else {panic!("Could not find feature name")},
 
                                 _ => ()
                             },
@@ -233,6 +261,7 @@ pub fn crawl<R: Read>(xml_events: Events<R>, registry: &mut VkRegistry) {
     // The loop doesn't push the last type/command, so that's handled here.
     registry.push_type(type_buffer).ok();
     registry.push_command(command_buffer).ok();
+    registry.push_feature(feature_buffer).ok();
 
     for t in &registry.types {
         unsafe {
@@ -281,6 +310,17 @@ pub fn crawl<R: Read>(xml_events: Events<R>, registry: &mut VkRegistry) {
 
     for c in &registry.commands {
         println!("{:#?}", c);
+    }
+
+    for f in &registry.features {
+        println!("Feature: {:?}", ::to_option(f.name));
+        for req in &f.require {
+            println!("Require: {:?}", req);
+        }
+
+        for rem in &f.remove {
+            println!("Remove: {:?}", rem);
+        }
     }
 }
 
