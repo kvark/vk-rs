@@ -11,6 +11,8 @@ use super::{VkRegistry, VkType, VkMember, VkVariant, VkCommand, VkParam, VkFeatu
 pub fn crawl<R: Read>(xml_events: Events<R>, registry: &mut VkRegistry) {
     use self::XmlElement::*;
 
+    // Everything that we're going to put in the registry get stored in temporary buffers before it's   |
+    // placed on the registry.                                                                          |
     let mut type_buffer = VkType::Unhandled;
     let mut command_buffer: Option<VkCommand> = None;
     let mut feature_buffer: Option<VkFeature> = None;
@@ -33,9 +35,14 @@ pub fn crawl<R: Read>(xml_events: Events<R>, registry: &mut VkRegistry) {
             }
 
             XmlEvent::EndElement{..} => {
+                // We don't have to go through the entire element stack - only the elements that have changed since 
+                // the last access
                 for el in &vk_elements[popped_to..] {
                     use super::tdvalid::*;
                     match *el {
+                        // This branch handles the various tags present in the vulkan xml file. Because each tag is only    |
+                        // seen once, when it's pushed onto vk_elements, we don't have to have any checking inside to make  |
+                        // sure we aren't looking at a duplicate tag.                                                       |
                         Tag{name: ref tag_name, attributes: ref tag_attrs} => 
                             match &tag_name[..] {
                                 "enums"      => 
@@ -199,35 +206,51 @@ pub fn crawl<R: Read>(xml_events: Events<R>, registry: &mut VkRegistry) {
                                 _ => ()
                             },
 
+                        // In the registry, some of the tags contain characters which need to be processed. That happens    |
+                        // here. Each Characters branch is specific to a certain block type, and what block we're in is     |
+                        // stored in the `cur_block` variable.                                                              |
                         Characters{ref chars, tags: (tag, _)}
                             if VkBlock::Types == cur_block => {
                             let chars = &chars[..];
+                            // Not every type contains the same tags; this match statement differentiates them so that they can |
+                            // be processed in the manner that they require.
                             match type_buffer {
                                 VkType::Struct{fields: ref mut members, ..} |
-                                VkType::Union{variants: ref mut members, ..} =>
+                                VkType::Union{variants: ref mut members, ..} => {
+                                    let member = members.last_mut().unwrap();
                                     match tag {
                                         "member" =>
                                             match chars {
-                                                "const" => members.last_mut().unwrap().field_type.make_const(),
-                                                "*"     => members.last_mut().unwrap().field_type.make_ptr(),
+                                                "const" => member.field_type.make_const(),
+                                                "*"     => member.field_type.make_ptr(),
                                                 _ 
                                                     if &chars[0..1] == "[" =>
                                                     match parse_array_index(chars) {
-                                                        Some((size, _)) => {members.last_mut().unwrap().field_type.make_array(size);}
+                                                        Some((size, _)) => {member.field_type.make_array(size);}
                                                         None => panic!(format!("Unexpected characters after name: {}", chars))
                                                     },
                                                 _       => ()
                                             },
-                                        "type"   => members.last_mut().unwrap().field_type.set_type(registry.append_str(chars)),
-                                        "name"   => 
+                                        "type"   => member.field_type.set_type(registry.append_str(chars)),
+                                        "name"   =>
+                                            // This exists as an `if let` block and isn't just `member.set_name(registry.append_str(chars))`    |
+                                            // because some dumbass decided to have two fields in the entire vulkan xml contain the array size  |
+                                            // *inside* of the <name> tag. This is terribly inconvenient, and now I have to document exactly    |
+                                            // what is means and why it exists.                                                                 |
+                                            //                                                                                                  |
+                                            // `size` is just the size of the the array. `name_len` is how long the name (without [\d+]) is.    |
+                                            // For example, if the contents of <name> are "srcOffsets[2]", `name_len` is equal to 10 because    |
+                                            // "srcOffsets" is 10 characters long.                                                              |
                                             if let Some((size, name_len)) = parse_array_index(chars) {
-                                                let member = members.last_mut().unwrap();
                                                 member.field_type.make_array(size);
                                                 member.set_name(registry.append_str(&chars[..name_len]));
-                                            } else {members.last_mut().unwrap().set_name(registry.append_str(chars))},
-                                        "enum"   => members.last_mut().unwrap().field_type.set_array_len(registry.append_str(chars)),
+                                            } else {member.set_name(registry.append_str(chars))},
+                                        // Some arrays have their length defined as a constant value. This adds the name of that constant   |
+                                        // to the type buffer.
+                                        "enum"   => member.field_type.set_array_const(registry.append_str(chars)),
                                         _        => ()
-                                    },
+                                    }
+                                }
                                 VkType::TypeDef{ref mut typ, 
                                                 ref mut name, 
                                                 ref mut validity} =>
@@ -277,6 +300,11 @@ pub fn crawl<R: Read>(xml_events: Events<R>, registry: &mut VkRegistry) {
                                 let chars = &chars[..];
                                 let command_buffer = command_buffer.as_mut().unwrap();
 
+                                // The vulkan xml specification guarantees that the <proto> tag, where the command return type and  |
+                                // name are defined, comes first. As such, if the command_buffer params list contains any value     |
+                                // the characters *must* match up with a param, and appropriate action is taken. Otherwise, the tag |
+                                // is going to be a <proto>. In the case that it isn't some shit has gone down and it should        |
+                                // probably be reported.                                                                            |
                                 if let Some(last_param) = command_buffer.params.last_mut() {
                                     if chars == "const" {
                                         last_param.typ.make_const();
@@ -308,7 +336,7 @@ pub fn crawl<R: Read>(xml_events: Events<R>, registry: &mut VkRegistry) {
                                         "name" => command_buffer.name = registry.append_str(chars),
                                         _      => panic!("Unexpected tag")
                                     }
-                                }
+                                } else {panic!("Some shit went down in a function tag, and you should probably go and report it.")}
                             }
                         Characters{..} => ()
                     }
@@ -431,6 +459,8 @@ fn pop_element_stack(vk_elements: &mut Vec<XmlElement>) {
     } else {panic!("Invalid xml; Unexpected closing tag")}
 }
 
+/// Takes a stack of XmlElements and returns a tuple containing the tag names of the last two tags.
+/// If the stack is only one tag deep, returns None for the second element.
 fn get_tags(vk_elements: &Vec<XmlElement>) -> (*const str, Option<*const str>) {
     fn recursive(mut vk_elements: Iter<XmlElement>, mut tags: [Option<*const str>; 2], mut index: usize) -> (*const str, Option<*const str>) {
         match vk_elements.next_back() {
@@ -450,18 +480,11 @@ fn get_tags(vk_elements: &Vec<XmlElement>) -> (*const str, Option<*const str>) {
 
 /// Takes a string slice and extracts x from [x], as long as [x] is at the end.
 ///
-///
-/// Returns (x, length of `chars` without [x]) if "[x]" is detected
-///
+/// Returns (x, length of `chars` without [x]) if "[x]" is detected.
 /// Returns (0, 0) if "[" is detected at end instead of "]"
 fn parse_array_index(chars: &str) -> Option<(usize, usize)> {
     let mut chariter = chars.chars().rev();
     match chariter.next().unwrap() {
-        // This only occurs when the variable is going to be an array. Now, in most cases it appears
-        // *outside* of <name>, but some dumbass decided to have two fields in the entire xml contain it
-        // inside. To the person who did that (you know who you are): if you're writing a document designed
-        // to be easy to parse, PLEASE keep it consistent. This goes for everyone else as well - think of
-        // the person that has to write an interpreter for your goddamn file.
         ']' => {
             // The size of the array
             let mut size = 0;

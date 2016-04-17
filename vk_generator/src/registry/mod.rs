@@ -193,7 +193,7 @@ impl VkElType {
         }
     }
 
-    fn set_array_len(&mut self, size_enum: *const str) {
+    fn set_array_const(&mut self, size_enum: *const str) {
         use self::VkElType::*;
         match *self {
             Var(_)                      => panic!("Attempted to set array length of Var"),
