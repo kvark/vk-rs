@@ -6,7 +6,7 @@ use xml::attribute::OwnedAttribute;
 use std::io::Read;
 use std::slice::Iter;
 use std::num::ParseIntError;
-use ::{VkRegistry, VkType, VkMember, VkVariant, VkCommand, VkParam, VkFeature, VkVersion, VkReqRem, VkExtn};
+use super::{VkRegistry, VkType, VkMember, VkVariant, VkCommand, VkParam, VkFeature, VkVersion, VkReqRem, VkExtn};
 
 pub fn crawl<R: Read>(xml_events: Events<R>, registry: &mut VkRegistry) {
     use self::XmlElement::*;
@@ -34,7 +34,7 @@ pub fn crawl<R: Read>(xml_events: Events<R>, registry: &mut VkRegistry) {
 
             XmlEvent::EndElement{..} => {
                 for el in &vk_elements[popped_to..] {
-                    use tdvalid::*;
+                    use super::tdvalid::*;
                     match *el {
                         Tag{name: ref tag_name, attributes: ref tag_attrs} => 
                             match &tag_name[..] {
