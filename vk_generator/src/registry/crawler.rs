@@ -336,7 +336,7 @@ pub fn crawl<R: Read>(xml_events: Events<R>, registry: &mut VkRegistry) {
 
     unsafe{
         for t in &registry.types {
-                match *t {
+                match *t.1 {
                     VkType::Struct{name, ref fields}  => {
                         println!("Struct {:?}", &*name);
                         for f in fields {
@@ -382,7 +382,7 @@ pub fn crawl<R: Read>(xml_events: Events<R>, registry: &mut VkRegistry) {
         }
 
         for c in &registry.commands {
-            println!("{:#?}", c);
+            println!("{:#?}", c.1);
         }
 
         for f in &registry.features {

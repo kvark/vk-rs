@@ -3,6 +3,8 @@ mod crawler;
 use xml::{EventReader, ParserConfig};
 
 use std::{fmt, mem};
+use std::collections::HashMap;
+use std::collections::hash_map::RandomState;
 
 #[inline]
 fn null_str() -> *const str {
@@ -14,21 +16,21 @@ fn to_option<'u>(s: *const str) -> Option<&'u str> {
     unsafe{ mem::transmute(s) }
 }
 
-pub struct VkRegistry {
+pub struct VkRegistry<'a> {
     string_buffer: String,
-    types: Vec<VkType>,
-    commands: Vec<VkCommand>,
+    types: HashMap<&'a str, VkType, RandomState>,
+    commands: HashMap<&'a str, VkCommand, RandomState>,
     features: Vec<VkFeature>,
     extns: Vec<VkExtn>
 }
 
-impl VkRegistry {
-    pub fn new(vk_xml: &[u8]) -> VkRegistry {
+impl<'a> VkRegistry<'a> {
+    pub fn new(vk_xml: &[u8]) -> VkRegistry<'a> {
         let mut registry = VkRegistry {
             string_buffer: String::with_capacity(vk_xml.len()),
-            types: Vec::with_capacity(256),
-            commands: Vec::with_capacity(128),
-            features: Vec::with_capacity(4),
+            types: HashMap::with_capacity(512),
+            commands: HashMap::with_capacity(256),
+            features: Vec::with_capacity(8),
             extns: Vec::with_capacity(64)
         };
         let xml_reader = EventReader::new_with_config(vk_xml, ParserConfig::new().trim_whitespace(true));
@@ -39,13 +41,13 @@ impl VkRegistry {
     fn push_type(&mut self, vk_type: VkType) -> Result<(), ()> {
         match vk_type {
             VkType::Unhandled => Err(()),
-            vk_type           => {self.types.push(vk_type); Ok(())}
+            vk_type           => unsafe{ self.types.insert(&*vk_type.name().unwrap(), vk_type); Ok(()) }
         }
     }
 
     fn push_command(&mut self, vk_command: Option<VkCommand>) -> Result<(), ()> {
         if let Some(cmd) = vk_command {
-            self.commands.push(cmd);
+            unsafe{ self.commands.insert(&*cmd.name, cmd) };
             Ok(())
         } else {Err(())}
     }
@@ -404,6 +406,20 @@ enum VkType {
 }
 
 impl VkType {
+    fn name(&self) -> Option<*const str> {
+        use self::VkType::*;
+        match *self {
+            Struct{name, ..}       |
+            Union{name, ..}        |
+            Enum{name, ..}         |
+            Handle{name, ..}       |
+            TypeDef{name, ..}      |
+            Define{name, ..}       |
+            FuncPointer{name, ..} => Some(name),
+            Unhandled             => None
+        }
+    }
+
     fn new_struct(name: *const str) -> VkType {
         VkType::Struct {
             name: name,
