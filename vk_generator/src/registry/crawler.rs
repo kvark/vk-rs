@@ -102,8 +102,8 @@ pub fn crawl<R: Read>(xml_events: Events<R>, registry: &mut VkRegistry) {
                                         VkType::Struct{fields: ref mut members, ..}   |
                                         VkType::Union{variants: ref mut members, ..} => 
                                             if let Some("true") = find_attribute(tag_attrs, "optional") {
-                                                members.push(VkMember::optional())
-                                            } else {members.push(VkMember::empty())},
+                                                members.push(VkMember::empty(true))
+                                            } else {members.push(VkMember::empty(false))},
                                         _                                            => panic!("Unexpected \"member\" tag found")
                                     },
                                 "member"     => panic!("\"member\" tag found outside of \"types\" block"),

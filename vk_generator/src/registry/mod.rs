@@ -87,7 +87,7 @@ impl<'a> VkRegistry<'a> {
 
 /// The type of a Vulkan element (struct members, union variants, function parameters, etc.) and
 /// any associated data.
-enum VkElType {
+pub enum VkElType {
     /// A standard, singular, owned field
     Var(*const str),
     /// An intermediate type created when the keyword "const" is detected
@@ -109,7 +109,7 @@ enum VkElType {
 }
 
 impl VkElType {
-    fn type_ptr(&self) -> Option<*const str> {
+    pub fn type_ptr(&self) -> Option<*const str> {
         use self::VkElType::*;
         match *self {
             Var(s)               |
@@ -260,10 +260,10 @@ impl fmt::Debug for VkElType {
     }
 }
 
-struct VkMember {
-    field_type: VkElType,
-    field_name: *const str,
-    optional: bool
+pub struct VkMember {
+    pub field_type: VkElType,
+    pub field_name: *const str,
+    pub optional: bool
 }
 
 impl fmt::Debug for VkMember {
@@ -277,19 +277,11 @@ impl fmt::Debug for VkMember {
 }
 
 impl VkMember {
-    fn empty() -> VkMember {
+    fn empty(optional: bool) -> VkMember {
         VkMember {
             field_type: VkElType::Unknown,
             field_name: null_str(),
-            optional: false
-        }
-    }
-
-    fn optional() -> VkMember {
-        VkMember {
-            field_type: VkElType::Unknown,
-            field_name: null_str(),
-            optional: true
+            optional: optional
         }
     }
 
@@ -303,7 +295,7 @@ impl VkMember {
 }
 
 /// A variant of a vulkan enum
-enum VkVariant {
+pub enum VkVariant {
     Value {
         name: *const str,
         value: isize
@@ -363,7 +355,7 @@ impl VkVariant {
     }
 }
 
-enum VkType {
+pub enum VkType {
     Struct {
         name: *const str,
         fields: Vec<VkMember>
@@ -478,16 +470,16 @@ impl VkType {
 }
 
 /// VkType::TypeDef validity flags
-mod tdvalid {
+pub mod tdvalid {
     pub const NOSEMICOLON: u8 = 0b01;
     pub const NOTYPEDEF: u8   = 0b10;
 }
 
-struct VkCommand {
+pub struct VkCommand {
     /// The return value
-    ret: VkElType,
-    name: *const str,
-    params: Vec<VkParam>
+    pub ret: VkElType,
+    pub name: *const str,
+    pub params: Vec<VkParam>
 }
 
 impl fmt::Debug for VkCommand {
@@ -510,9 +502,9 @@ impl VkCommand {
     }
 }
 
-struct VkParam {
-    typ: VkElType,
-    name: *const str
+pub struct VkParam {
+    pub typ: VkElType,
+    pub name: *const str
 }
 
 impl fmt::Debug for VkParam {
@@ -533,26 +525,26 @@ impl VkParam {
     }
 }
 
-struct VkVersion(u16, u16, u16);
+pub struct VkVersion(pub u16, pub u16);
 
 impl VkVersion {
     fn from_str(num: &str) -> VkVersion {
         use std::u16;
 
-        let mut ver = [0; 3];
+        let mut ver = [0; 2];
         for (i, digit) in num.split('.').enumerate() {
             ver[i] = u16::from_str_radix(digit, 10).unwrap();
         }
 
-        VkVersion(ver[0], ver[1], ver[2])
+        VkVersion(ver[0], ver[1])
     }
 }
 
-struct VkFeature {
-    name: *const str,
-    version: VkVersion,
-    require: Vec<VkInterface>,
-    remove: Vec<VkInterface>
+pub struct VkFeature {
+    pub name: *const str,
+    pub version: VkVersion,
+    pub require: Vec<VkInterface>,
+    pub remove: Vec<VkInterface>
 }
 
 impl VkFeature {
@@ -596,7 +588,7 @@ impl VkFeature {
     }
 }
 
-enum VkInterface {
+pub enum VkInterface {
     Command {
         name: *const str,
         profile: *const str
@@ -687,11 +679,11 @@ enum VkReqRem {
     None
 }
 
-struct VkExtn {
-    name: *const str,
-    num: isize,
-    require: Vec<VkInterface>,
-    remove: Vec<VkInterface>
+pub struct VkExtn {
+    pub name: *const str,
+    pub num: isize,
+    pub require: Vec<VkInterface>,
+    pub remove: Vec<VkInterface>
 }
 
 impl VkExtn {
