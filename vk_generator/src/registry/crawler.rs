@@ -336,49 +336,49 @@ pub fn crawl<R: Read>(xml_events: Events<R>, registry: &mut VkRegistry) {
 
     unsafe{
         for t in &registry.types {
-                match *t.1 {
-                    VkType::Struct{name, ref fields}  => {
-                        println!("Struct {:?}", &*name);
-                        for f in fields {
-                            println!("\t{:?}", f);
-                        }
+            match *t.1 {
+                VkType::Struct{name, ref fields}  => {
+                    println!("Struct {:?}", &*name);
+                    for f in fields {
+                        println!("\t{:?}", f);
                     }
-
-                    VkType::Union{name, ref variants} => {
-                        println!("Union {:?}", &*name);
-                        for v in variants {
-                            println!("\t{:?}", v);
-                        }
-                    }
-
-                    VkType::Enum{name, ref variants} => {
-                        println!("Enum {:?}", &*name);
-                        for v in variants {
-                            println!("\t{:?}", v);
-                        }
-                    }
-
-                    VkType::TypeDef{typ, name, validity} =>
-                        if validity != 0 {
-                            panic!("Invalid typedef")
-                        } else {
-                            println!("TypeDef {:?} {:?}", &*typ, &*name)
-                        },
-
-                    VkType::Handle{name, validity, dispatchable} =>
-                        if !validity {
-                            panic!("Invalid handle")
-                        } else if dispatchable {
-                            println!("Handle {:?}", &*name)
-                        } else {
-                            println!("Non-Dispatchable Handle {:?}", &*name)
-                        },
-
-                    VkType::Define{name}      => println!("Define {:?}", &*name),
-                    VkType::FuncPointer{name} => println!("FuncPointer {:?}", &*name),
-
-                    VkType::Unhandled => ()
                 }
+
+                VkType::Union{name, ref variants} => {
+                    println!("Union {:?}", &*name);
+                    for v in variants {
+                        println!("\t{:?}", v);
+                    }
+                }
+
+                VkType::Enum{name, ref variants} => {
+                    println!("Enum {:?}", &*name);
+                    for v in variants {
+                        println!("\t{:?}", v);
+                    }
+                }
+
+                VkType::TypeDef{typ, name, validity} =>
+                    if validity != 0 {
+                        panic!("Invalid typedef")
+                    } else {
+                        println!("TypeDef {:?} {:?}", &*typ, &*name)
+                    },
+
+                VkType::Handle{name, validity, dispatchable} =>
+                    if !validity {
+                        panic!("Invalid handle")
+                    } else if dispatchable {
+                        println!("Handle {:?}", &*name)
+                    } else {
+                        println!("Non-Dispatchable Handle {:?}", &*name)
+                    },
+
+                VkType::Define{name}      => println!("Define {:?}", &*name),
+                VkType::FuncPointer{name} => println!("FuncPointer {:?}", &*name),
+
+                VkType::Unhandled => ()
+            }
         }
 
         for c in &registry.commands {
