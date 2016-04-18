@@ -92,6 +92,7 @@ impl<'a> VkRegistry<'a> {
 
 /// The type of a Vulkan element (struct members, union variants, function parameters, etc.) and
 /// any associated data.
+#[derive(Clone)]
 pub enum VkElType {
     /// A standard, singular, owned field
     Var(*const str),
@@ -265,6 +266,7 @@ impl fmt::Debug for VkElType {
     }
 }
 
+#[derive(Clone)]
 pub struct VkMember {
     pub field_type: VkElType,
     pub field_name: *const str,
@@ -300,6 +302,7 @@ impl VkMember {
 }
 
 /// A variant of a vulkan enum
+#[derive(Clone)]
 pub enum VkVariant {
     Value {
         name: *const str,
@@ -346,6 +349,7 @@ impl VkVariant {
     }
 }
 
+#[derive(Clone)]
 pub enum VkType {
     Struct {
         name: *const str,
@@ -390,6 +394,11 @@ pub enum VkType {
         name: *const str
     },
 
+    ExternType {
+        name: *const str,
+        requires: *const str
+    },
+
     Unhandled
 }
 
@@ -404,7 +413,8 @@ impl VkType {
             TypeDef{name, ..}      |
             ApiConst{name, ..}     |
             Define{name, ..}       |
-            FuncPointer{name, ..} => Some(name),
+            FuncPointer{name, ..}  |
+            ExternType{name, ..}  => Some(name),
             Unhandled             => None
         }
     }
@@ -469,6 +479,13 @@ impl VkType {
     fn empty_funcpointer() -> VkType {
         VkType::FuncPointer {
             name: null_str()
+        }
+    }
+
+    fn new_extern(name: *const str, requires: *const str) -> VkType {
+        VkType::ExternType {
+            name: name,
+            requires: requires
         }
     }
 }
@@ -572,12 +589,12 @@ impl VkFeature {
         }
     }
 
-    fn push_enum(&mut self, name: *const str, reqrem: &VkReqRem) {
+    fn push_const(&mut self, name: *const str, reqrem: &VkReqRem) {
         use self::VkReqRem::*;
 
         match *reqrem {
-            Require(profile) => self.require.push(VkInterface::new_ref_enum(name, profile)),
-            Remove(profile)  => self.remove.push(VkInterface::new_ref_enum(name, profile)),
+            Require(profile) => self.require.push(VkInterface::new_api_const(name, profile)),
+            Remove(profile)  => self.remove.push(VkInterface::new_api_const(name, profile)),
             None             => panic!("Invalid reqrem")
         }
     }
@@ -604,13 +621,15 @@ pub enum VkInterface {
         profile: *const str
     },
 
-    ApiConst {
+    /// A new constant that is defined in an extension.
+    ConstDef {
         name: *const str,
         value: *const str,
         profile: *const str
     },
 
-    RefEnum {
+    /// Defines interface to constant defined in "API Constants" enum tag
+    ApiConst {
         name: *const str,
         profile: *const str
     },
@@ -630,14 +649,14 @@ impl fmt::Debug for VkInterface {
             match *self {
                 Command{..}  => "Command",
                 Type{..}     => "Type",
-                ApiConst{..} => "ApiConst",
-                RefEnum{..}  => "RefEnum",
+                ConstDef{..} => "ConstDef",
+                ApiConst{..}  => "ApiConst",
                 ExtnEnum{..} => "ExtnEnum"
             });
         match *self {
             Command{name, profile}  |
             Type{name, profile}     |
-            RefEnum{name, profile} =>
+            ApiConst{name, profile} =>
                 fmt_struct.field("name", &to_option(name))
                           .field("profile", &to_option(profile))
                           .finish(),
@@ -648,7 +667,7 @@ impl fmt::Debug for VkInterface {
                           .field("profile", &to_option(profile))
                           .field("variant", &*variant)
                           .finish(),
-            ApiConst{name, 
+            ConstDef{name, 
                      value, 
                      profile}      =>
                 fmt_struct.field("name", &to_option(name))
@@ -675,16 +694,16 @@ impl VkInterface {
         }
     }
 
-    fn new_api_const(name: *const str, value: *const str, profile: Option<*const str>) -> VkInterface {
-        VkInterface::ApiConst {
+    fn new_const_def(name: *const str, value: *const str, profile: Option<*const str>) -> VkInterface {
+        VkInterface::ConstDef {
             name: name,
             value: value,
             profile: profile.unwrap_or(null_str())
         }
     }
 
-    fn new_ref_enum(name: *const str, profile: Option<*const str>) -> VkInterface {
-        VkInterface::RefEnum {
+    fn new_api_const(name: *const str, profile: Option<*const str>) -> VkInterface {
+        VkInterface::ApiConst {
             name: name,
             profile: profile.unwrap_or(null_str())
         }
@@ -738,8 +757,8 @@ impl VkExtn {
         use self::VkReqRem::*;
 
         match *reqrem {
-            Require(profile) => self.require.push(VkInterface::new_api_const(name, value, profile)),
-            Remove(profile)  => self.remove.push(VkInterface::new_api_const(name, value, profile)),
+            Require(profile) => self.require.push(VkInterface::new_const_def(name, value, profile)),
+            Remove(profile)  => self.remove.push(VkInterface::new_const_def(name, value, profile)),
             None             => panic!("Invalid reqrem")
         }
     }

@@ -97,6 +97,13 @@ pub fn crawl<R: Read>(xml_events: Events<R>, registry: &mut VkRegistry) {
                                                 type_buffer = VkType::new_union(registry.append_str(find_attribute(tag_attrs, "name").unwrap())),
                                             _               => panic!("Unexpected category")
                                         }
+                                    } else if let Some(requires) = find_attribute(tag_attrs, "requires") {
+                                        registry.push_type(type_buffer).ok();
+                                        let requires = registry.append_str(requires);
+                                        if let Some(name) = find_attribute(tag_attrs, "name") {
+                                            let name = registry.append_str(name);
+                                            type_buffer = VkType::new_extern(name, requires);
+                                        } else {panic!("Expected external type name; found nothing")}
                                     },
                                 "member"
                                     if VkBlock::Types == cur_block =>
@@ -141,7 +148,7 @@ pub fn crawl<R: Read>(xml_events: Events<R>, registry: &mut VkRegistry) {
                                 "enum"
                                     if VkBlock::Feature == cur_block =>
                                     if let Some(name) = find_attribute(tag_attrs, "name") {
-                                        feature_buffer.as_mut().unwrap().push_enum(registry.append_str(name), &interface_reqrem);
+                                        feature_buffer.as_mut().unwrap().push_const(registry.append_str(name), &interface_reqrem);
                                     } else {panic!("Could not find feature name")},
                                 "type"
                                     if VkBlock::Feature == cur_block =>
@@ -408,6 +415,7 @@ pub fn crawl<R: Read>(xml_events: Events<R>, registry: &mut VkRegistry) {
 
                 VkType::Define{name}      => println!("Define {:?}", &*name),
                 VkType::FuncPointer{name} => println!("FuncPointer {:?}", &*name),
+                VkType::ExternType{name, requires}  => println!("ExternType {:?} {:?}", &*name, &*requires),
 
                 VkType::Unhandled => ()
             }
