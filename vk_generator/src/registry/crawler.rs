@@ -57,18 +57,20 @@ pub fn crawl<R: Read>(xml_events: Events<R>, registry: &mut VkRegistry) {
                                         if let VkType::Enum{name: enum_name, ref mut variants} = type_buffer {
                                             let name = registry.append_str(name);
 
-                                            variants.push(
-                                                if "API Constants" == unsafe{ &*enum_name } {
+                                            if "API Constants" == unsafe{ &*enum_name } {
+                                                if let Some(value) = find_attribute(tag_attrs, "value") {
+                                                    let value = registry.append_str(value);
+                                                    registry.push_type(VkType::new_const(name, value)).ok();
+                                                } else {panic!("Could not find value in API Constant")}
+                                            } else {
+                                                variants.push(
                                                     if let Some(value) = find_attribute(tag_attrs, "value") {
-                                                        VkVariant::new_const(name, registry.append_str(value))
-                                                    } else {panic!("Could not find value in API Constant")}
-
-                                                } else if let Some(value) = find_attribute(tag_attrs, "value") {
-                                                    VkVariant::new_value(name, to_isize(value).unwrap())
-                                                } else if let Some(bitpos) = find_attribute(tag_attrs, "bitpos") {
-                                                    VkVariant::new_bitpos(name, to_isize(bitpos).unwrap())
-                                                } else {panic!("Could not find value or bitpos in enum")}
-                                            );
+                                                        VkVariant::new_value(name, to_isize(value).unwrap())
+                                                    } else if let Some(bitpos) = find_attribute(tag_attrs, "bitpos") {
+                                                        VkVariant::new_bitpos(name, to_isize(bitpos).unwrap())
+                                                    } else {panic!("Could not find value or bitpos in enum")}
+                                                );
+                                            }
                                         }
                                     } else {panic!("Could not find enum variant name")},
 
@@ -197,9 +199,8 @@ pub fn crawl<R: Read>(xml_events: Events<R>, registry: &mut VkRegistry) {
                                                 Some(registry.append_str(extends)),
                                                 &interface_reqrem);
                                         } else if let Some(value) = find_attribute(tag_attrs, "value") {
-                                            extn_buffer.as_mut().unwrap().push_enum(
-                                                VkVariant::new_const(name, registry.append_str(value)),
-                                                None, 
+                                            extn_buffer.as_mut().unwrap().push_const(
+                                                name, registry.append_str(value),
                                                 &interface_reqrem);
                                         }
                                     } else {panic!("Could not find enum name")},
@@ -402,6 +403,9 @@ pub fn crawl<R: Read>(xml_events: Events<R>, registry: &mut VkRegistry) {
                         println!("Non-Dispatchable Handle {:?}", &*name)
                     },
 
+                VkType::ApiConst{name, value} =>
+                    println!("API Const: {} {}", &*name, &*value),
+
                 VkType::Define{name}      => println!("Define {:?}", &*name),
                 VkType::FuncPointer{name} => println!("FuncPointer {:?}", &*name),
 
@@ -414,23 +418,23 @@ pub fn crawl<R: Read>(xml_events: Events<R>, registry: &mut VkRegistry) {
         }
 
         for f in &registry.features {
-            println!("Feature: {:?}", &*f.name);
-            for req in &f.require {
+            println!("Feature: {:?}", &*f.1.name);
+            for req in &f.1.require {
                 println!("\tRequire: {:?}", req);
             }
 
-            for rem in &f.remove {
+            for rem in &f.1.remove {
                 println!("\tRemove: {:?}", rem);
             }
         }
 
         for e in &registry.extns {
-            println!("Extension: {:?}", &*e.name);
-            for req in &e.require {
+            println!("Extension: {:?}", &*e.1.name);
+            for req in &e.1.require {
                 println!("\tRequire: {:?}", req);
             }
 
-            for rem in &e.remove {
+            for rem in &e.1.remove {
                 println!("\tRemove: {:?}", rem);
             }
         }

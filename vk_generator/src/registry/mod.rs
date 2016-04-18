@@ -4,7 +4,6 @@ use xml::{EventReader, ParserConfig};
 
 use std::{fmt, mem};
 use std::collections::HashMap;
-use std::collections::hash_map::RandomState;
 
 #[inline]
 fn null_str() -> *const str {
@@ -18,10 +17,10 @@ fn to_option<'u>(s: *const str) -> Option<&'u str> {
 
 pub struct VkRegistry<'a> {
     string_buffer: String,
-    types: HashMap<&'a str, VkType, RandomState>,
-    commands: HashMap<&'a str, VkCommand, RandomState>,
-    features: Vec<VkFeature>,
-    extns: Vec<VkExtn>
+    types: HashMap<&'a str, VkType>,
+    commands: HashMap<&'a str, VkCommand>,
+    features: HashMap<VkVersion, VkFeature>,
+    extns: HashMap<&'a str, VkExtn>
 }
 
 impl<'a> VkRegistry<'a> {
@@ -30,8 +29,8 @@ impl<'a> VkRegistry<'a> {
             string_buffer: String::with_capacity(vk_xml.len()),
             types: HashMap::with_capacity(512),
             commands: HashMap::with_capacity(256),
-            features: Vec::with_capacity(8),
-            extns: Vec::with_capacity(64)
+            features: HashMap::with_capacity(8),
+            extns: HashMap::with_capacity(64)
         };
         let xml_reader = EventReader::new_with_config(vk_xml, ParserConfig::new().trim_whitespace(true));
         crawler::crawl(xml_reader.into_iter(), &mut registry);
@@ -41,7 +40,13 @@ impl<'a> VkRegistry<'a> {
     fn push_type(&mut self, vk_type: VkType) -> Result<(), ()> {
         match vk_type {
             VkType::Unhandled => Err(()),
-            vk_type           => unsafe{ self.types.insert(&*vk_type.name().unwrap(), vk_type); Ok(()) }
+            vk_type           => unsafe{ 
+                let name = vk_type.name().unwrap();
+                if "API Constants" != &*name {
+                    self.types.insert(&*vk_type.name().unwrap(), vk_type); 
+                    Ok(())
+                } else {Err(())}
+            }
         }
     }
 
@@ -54,14 +59,14 @@ impl<'a> VkRegistry<'a> {
 
     fn push_feature(&mut self, feature: Option<VkFeature>) -> Result<(), ()> {
         if let Some(feat) = feature {
-            self.features.push(feat);
+            self.features.insert(feat.version, feat);
             Ok(())
         } else {Err(())}
     }
 
     fn push_extn(&mut self, extn: Option<VkExtn>) -> Result<(), ()> {
         if let Some(ex) = extn {
-            self.extns.push(ex);
+            unsafe{ self.extns.insert(&*ex.name, ex) };
             Ok(())
         } else {Err(())}
     }
@@ -304,11 +309,6 @@ pub enum VkVariant {
     Bitpos {
         name: *const str,
         bitpos: isize
-    },
-
-    ApiConst {
-        name: *const str,
-        value: *const str
     }
 }
 
@@ -321,13 +321,11 @@ impl fmt::Debug for VkVariant {
             match *self {
                 Value{name, ..}    => {pt = name; "Value"}
                 Bitpos{name, ..}   => {pt = name; "Bitpos"}
-                ApiConst{name, ..} => {pt = name; "ApiConst"}
             });
         fmt_struct.field("name", &to_option(pt));
         match *self {
             Value{value, ..} => fmt_struct.field("value", &value),
             Bitpos{bitpos, ..} => fmt_struct.field("bitpos", &bitpos),
-            ApiConst{value, ..} => fmt_struct.field("value", &to_option(value))
         }.finish()
     }
 }
@@ -344,13 +342,6 @@ impl VkVariant {
         VkVariant::Bitpos {
             name: name,
             bitpos: bitpos
-        }
-    }
-
-    fn new_const(name: *const str, value: *const str) -> VkVariant {
-        VkVariant::ApiConst {
-            name: name,
-            value: value
         }
     }
 }
@@ -385,6 +376,11 @@ pub enum VkType {
         validity: u8
     },
 
+    ApiConst {
+        name: *const str,
+        value: *const str
+    },
+
     /// Defines are hardcoded into the generator, as procedurally generating them would be hard as fuck
     Define {
         name: *const str
@@ -406,6 +402,7 @@ impl VkType {
             Enum{name, ..}         |
             Handle{name, ..}       |
             TypeDef{name, ..}      |
+            ApiConst{name, ..}     |
             Define{name, ..}       |
             FuncPointer{name, ..} => Some(name),
             Unhandled             => None
@@ -447,6 +444,13 @@ impl VkType {
             typ: null_str(),
             name: null_str(),
             validity: NOSEMICOLON | NOTYPEDEF
+        }
+    }
+
+    fn new_const(name: *const str, value: *const str) -> VkType {
+        VkType::ApiConst {
+            name: name,
+            value: value
         }
     }
 
@@ -525,6 +529,7 @@ impl VkParam {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct VkVersion(pub u16, pub u16);
 
 impl VkVersion {
@@ -599,6 +604,12 @@ pub enum VkInterface {
         profile: *const str
     },
 
+    ApiConst {
+        name: *const str,
+        value: *const str,
+        profile: *const str
+    },
+
     RefEnum {
         name: *const str,
         profile: *const str
@@ -619,6 +630,7 @@ impl fmt::Debug for VkInterface {
             match *self {
                 Command{..}  => "Command",
                 Type{..}     => "Type",
+                ApiConst{..} => "ApiConst",
                 RefEnum{..}  => "RefEnum",
                 ExtnEnum{..} => "ExtnEnum"
             });
@@ -635,6 +647,13 @@ impl fmt::Debug for VkInterface {
                 fmt_struct.field("extends", &to_option(extends))
                           .field("profile", &to_option(profile))
                           .field("variant", &*variant)
+                          .finish(),
+            ApiConst{name, 
+                     value, 
+                     profile}      =>
+                fmt_struct.field("name", &to_option(name))
+                          .field("value", &to_option(value))
+                          .field("profile", &to_option(profile))
                           .finish()
 
         }
@@ -652,6 +671,14 @@ impl VkInterface {
     fn new_type(name: *const str, profile: Option<*const str>) -> VkInterface {
         VkInterface::Type {
             name: name,
+            profile: profile.unwrap_or(null_str())
+        }
+    }
+
+    fn new_api_const(name: *const str, value: *const str, profile: Option<*const str>) -> VkInterface {
+        VkInterface::ApiConst {
+            name: name,
+            value: value,
             profile: profile.unwrap_or(null_str())
         }
     }
@@ -703,6 +730,16 @@ impl VkExtn {
         match *reqrem {
             Require(profile) => self.require.push(VkInterface::new_command(name, profile)),
             Remove(profile)  => self.remove.push(VkInterface::new_command(name, profile)),
+            None             => panic!("Invalid reqrem")
+        }
+    }
+
+    fn push_const(&mut self, name: *const str, value: *const str, reqrem: &VkReqRem) {
+        use self::VkReqRem::*;
+
+        match *reqrem {
+            Require(profile) => self.require.push(VkInterface::new_api_const(name, value, profile)),
+            Remove(profile)  => self.remove.push(VkInterface::new_api_const(name, value, profile)),
             None             => panic!("Invalid reqrem")
         }
     }
