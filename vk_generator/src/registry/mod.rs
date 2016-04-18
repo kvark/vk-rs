@@ -1,5 +1,7 @@
 mod crawler;
 
+use to_option;
+use generator::GenRegistry;
 use xml::{EventReader, ParserConfig};
 
 use std::{fmt, mem};
@@ -8,11 +10,6 @@ use std::collections::HashMap;
 #[inline]
 fn null_str() -> *const str {
     unsafe{ mem::transmute([0usize; 2] ) }
-}
-
-#[inline]
-fn to_option<'u>(s: *const str) -> Option<&'u str> {
-    unsafe{ mem::transmute(s) }
 }
 
 pub struct VkRegistry<'a> {
@@ -87,6 +84,24 @@ impl<'a> VkRegistry<'a> {
             let ptr = self.string_buffer.as_ptr().offset((self.string_buffer.len() - string.len()) as isize);
             str::from_utf8_unchecked(slice::from_raw_parts(ptr, string.len())) as *const str
         }
+    }
+}
+
+impl<'a> GenRegistry for VkRegistry<'a> {
+    fn features(&self) -> &HashMap<VkVersion, VkFeature> {
+        &self.features
+    }
+
+    fn types(&self) -> &HashMap<&str, VkType> {
+        &self.types
+    }
+
+    fn commands(&self) -> &HashMap<&str, VkCommand> {
+        &self.commands
+    }
+
+    fn extns(&self) -> &HashMap<&str, VkExtn> {
+        &self.extns
     }
 }
 
@@ -377,6 +392,8 @@ pub enum VkType {
         typ: *const str,
         /// The name of the new type
         name: *const str,
+        /// Optional
+        requires: *const str,
         validity: u8
     },
 
@@ -403,7 +420,7 @@ pub enum VkType {
 }
 
 impl VkType {
-    fn name(&self) -> Option<*const str> {
+    pub fn name(&self) -> Option<*const str> {
         use self::VkType::*;
         match *self {
             Struct{name, ..}       |
@@ -419,28 +436,28 @@ impl VkType {
         }
     }
 
-    fn new_struct(name: *const str) -> VkType {
+    pub fn new_struct(name: *const str) -> VkType {
         VkType::Struct {
             name: name,
             fields: Vec::with_capacity(8)
         }
     }
 
-    fn new_union(name: *const str) -> VkType {
+    pub fn new_union(name: *const str) -> VkType {
         VkType::Union {
             name: name,
             variants: Vec::with_capacity(8)
         }
     }
 
-    fn new_enum(name: *const str) -> VkType {
+    pub fn new_enum(name: *const str) -> VkType {
         VkType::Enum {
             name: name,
             variants: Vec::with_capacity(8)
         }
     }
 
-    fn empty_handle() -> VkType {
+    pub fn empty_handle() -> VkType {
         VkType::Handle {
             name: null_str(),
             validity: false,
@@ -448,41 +465,42 @@ impl VkType {
         }
     }
 
-    fn empty_typedef() -> VkType {
+    pub fn new_typedef(requires: Option<*const str>) -> VkType {
         use self::tdvalid::*;
         VkType::TypeDef {
             typ: null_str(),
             name: null_str(),
+            requires: requires.unwrap_or(null_str()),
             validity: NOSEMICOLON | NOTYPEDEF
         }
     }
 
-    fn new_const(name: *const str, value: *const str) -> VkType {
+    pub fn new_const(name: *const str, value: *const str) -> VkType {
         VkType::ApiConst {
             name: name,
             value: value
         }
     }
 
-    fn new_define(name: *const str) -> VkType {
+    pub fn new_define(name: *const str) -> VkType {
         VkType::Define  {
             name: name
         }
     }
 
-    fn empty_define() -> VkType {
+    pub fn empty_define() -> VkType {
         VkType::Define {
             name: null_str()
         }
     }
 
-    fn empty_funcpointer() -> VkType {
+    pub fn empty_funcpointer() -> VkType {
         VkType::FuncPointer {
             name: null_str()
         }
     }
 
-    fn new_extern(name: *const str, requires: *const str) -> VkType {
+    pub fn new_extern(name: *const str, requires: *const str) -> VkType {
         VkType::ExternType {
             name: name,
             requires: requires

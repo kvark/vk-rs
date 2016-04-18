@@ -81,7 +81,7 @@ pub fn crawl<R: Read>(xml_events: Events<R>, registry: &mut VkRegistry) {
                                         registry.push_type(type_buffer).ok();
                                         match category {
                                             "basetype"       |
-                                            "bitmask"       => type_buffer = VkType::empty_typedef(),
+                                            "bitmask"       => type_buffer = VkType::new_typedef(find_attribute(tag_attrs, "requires").map(|r| registry.append_str(r))),
                                             "define"        => 
                                                 if let Some(name) = find_attribute(tag_attrs, "name") {
                                                     type_buffer = VkType::new_define(registry.append_str(name));
@@ -261,7 +261,7 @@ pub fn crawl<R: Read>(xml_events: Events<R>, registry: &mut VkRegistry) {
                                 }
                                 VkType::TypeDef{ref mut typ, 
                                                 ref mut name, 
-                                                ref mut validity} =>
+                                                ref mut validity, ..} =>
                                     match tag {
                                         "type" =>
                                             match chars {
@@ -370,83 +370,83 @@ pub fn crawl<R: Read>(xml_events: Events<R>, registry: &mut VkRegistry) {
     registry.push_feature(feature_buffer).ok();
     registry.push_extn(extn_buffer).ok();
 
-    unsafe{
-        for t in &registry.types {
-            match *t.1 {
-                VkType::Struct{name, ref fields}  => {
-                    println!("Struct {:?}", &*name);
-                    for f in fields {
-                        println!("\t{:?}", f);
-                    }
-                }
+    // unsafe{
+    //     for t in &registry.types {
+    //         match *t.1 {
+    //             VkType::Struct{name, ref fields}  => {
+    //                 println!("Struct {:?}", &*name);
+    //                 for f in fields {
+    //                     println!("\t{:?}", f);
+    //                 }
+    //             }
 
-                VkType::Union{name, ref variants} => {
-                    println!("Union {:?}", &*name);
-                    for v in variants {
-                        println!("\t{:?}", v);
-                    }
-                }
+    //             VkType::Union{name, ref variants} => {
+    //                 println!("Union {:?}", &*name);
+    //                 for v in variants {
+    //                     println!("\t{:?}", v);
+    //                 }
+    //             }
 
-                VkType::Enum{name, ref variants} => {
-                    println!("Enum {:?}", &*name);
-                    for v in variants {
-                        println!("\t{:?}", v);
-                    }
-                }
+    //             VkType::Enum{name, ref variants} => {
+    //                 println!("Enum {:?}", &*name);
+    //                 for v in variants {
+    //                     println!("\t{:?}", v);
+    //                 }
+    //             }
 
-                VkType::TypeDef{typ, name, validity} =>
-                    if validity != 0 {
-                        panic!("Invalid typedef")
-                    } else {
-                        println!("TypeDef {:?} {:?}", &*typ, &*name)
-                    },
+    //             VkType::TypeDef{typ, name, validity} =>
+    //                 if validity != 0 {
+    //                     panic!("Invalid typedef")
+    //                 } else {
+    //                     println!("TypeDef {:?} {:?}", &*typ, &*name)
+    //                 },
 
-                VkType::Handle{name, validity, dispatchable} =>
-                    if !validity {
-                        panic!("Invalid handle")
-                    } else if dispatchable {
-                        println!("Handle {:?}", &*name)
-                    } else {
-                        println!("Non-Dispatchable Handle {:?}", &*name)
-                    },
+    //             VkType::Handle{name, validity, dispatchable} =>
+    //                 if !validity {
+    //                     panic!("Invalid handle")
+    //                 } else if dispatchable {
+    //                     println!("Handle {:?}", &*name)
+    //                 } else {
+    //                     println!("Non-Dispatchable Handle {:?}", &*name)
+    //                 },
 
-                VkType::ApiConst{name, value} =>
-                    println!("API Const: {} {}", &*name, &*value),
+    //             VkType::ApiConst{name, value} =>
+    //                 println!("API Const: {} {}", &*name, &*value),
 
-                VkType::Define{name}      => println!("Define {:?}", &*name),
-                VkType::FuncPointer{name} => println!("FuncPointer {:?}", &*name),
-                VkType::ExternType{name, requires}  => println!("ExternType {:?} {:?}", &*name, &*requires),
+    //             VkType::Define{name}      => println!("Define {:?}", &*name),
+    //             VkType::FuncPointer{name} => println!("FuncPointer {:?}", &*name),
+    //             VkType::ExternType{name, requires}  => println!("ExternType {:?} {:?}", &*name, &*requires),
 
-                VkType::Unhandled => ()
-            }
-        }
+    //             VkType::Unhandled => ()
+    //         }
+    //     }
 
-        for c in &registry.commands {
-            println!("{:#?}", c.1);
-        }
+    //     for c in &registry.commands {
+    //         println!("{:#?}", c.1);
+    //     }
 
-        for f in &registry.features {
-            println!("Feature: {:?}", &*f.1.name);
-            for req in &f.1.require {
-                println!("\tRequire: {:?}", req);
-            }
+    //     for f in &registry.features {
+    //         println!("Feature: {:?}", &*f.1.name);
+    //         for req in &f.1.require {
+    //             println!("\tRequire: {:?}", req);
+    //         }
 
-            for rem in &f.1.remove {
-                println!("\tRemove: {:?}", rem);
-            }
-        }
+    //         for rem in &f.1.remove {
+    //             println!("\tRemove: {:?}", rem);
+    //         }
+    //     }
 
-        for e in &registry.extns {
-            println!("Extension: {:?}", &*e.1.name);
-            for req in &e.1.require {
-                println!("\tRequire: {:?}", req);
-            }
+    //     for e in &registry.extns {
+    //         println!("Extension: {:?}", &*e.1.name);
+    //         for req in &e.1.require {
+    //             println!("\tRequire: {:?}", req);
+    //         }
 
-            for rem in &e.1.remove {
-                println!("\tRemove: {:?}", rem);
-            }
-        }
-    }
+    //         for rem in &e.1.remove {
+    //             println!("\tRemove: {:?}", rem);
+    //         }
+    //     }
+    // }
 }
 
 fn to_isize(source: &str) -> Result<isize, ParseIntError> {

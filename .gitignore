@@ -2,3 +2,4 @@ target
 vk_api/Cargo.lock
 vk_generator/output.txt
 vk_generator/output_bkup.txt
+vk_generator/output2.txt
