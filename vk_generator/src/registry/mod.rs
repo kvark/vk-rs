@@ -103,6 +103,10 @@ impl<'a> GenRegistry for VkRegistry<'a> {
     fn extns(&self) -> &HashMap<&str, VkExtn> {
         &self.extns
     }
+
+    fn buffer_len(&self) -> usize {
+        self.string_buffer.len()
+    }
 }
 
 /// The type of a Vulkan element (struct members, union variants, function parameters, etc.) and
@@ -146,7 +150,7 @@ impl VkElType {
         }
     }
 
-    fn set_type(&mut self, typ: *const str) {
+    pub fn set_type(&mut self, typ: *const str) {
         use self::VkElType::*;
         match *self {
             Var(ref mut s)               |
@@ -156,10 +160,7 @@ impl VkElType {
             ConstArray(ref mut s, _)     |
             ConstArrayEnum(ref mut s, _) |
             MutArray(ref mut s, _)       |
-            MutArrayEnum(ref mut s, _)  => 
-                if *s == null_str() {
-                    *s = typ
-                } else {panic!("Field type already set")},
+            MutArrayEnum(ref mut s, _)  => *s = typ,
             Void                        => panic!("Field type already set"),
             Unknown                     => *self = Var(typ)
 
@@ -436,6 +437,22 @@ impl VkType {
         }
     }
 
+    pub fn set_name(&mut self, new_name: *const str) -> Result<(), ()> {
+        use self::VkType::*;
+        match *self {
+            Struct{ref mut name, ..}       |
+            Union{ref mut name, ..}        |
+            Enum{ref mut name, ..}         |
+            Handle{ref mut name, ..}       |
+            TypeDef{ref mut name, ..}      |
+            ApiConst{ref mut name, ..}     |
+            Define{ref mut name, ..}       |
+            FuncPointer{ref mut name, ..}  |
+            ExternType{ref mut name, ..}  => {*name = new_name; Ok(())}
+            Unhandled                     => Err(())
+        }
+    }
+
     pub fn new_struct(name: *const str) -> VkType {
         VkType::Struct {
             name: name,
@@ -514,6 +531,7 @@ pub mod tdvalid {
     pub const NOTYPEDEF: u8   = 0b10;
 }
 
+#[derive(Clone)]
 pub struct VkCommand {
     /// The return value
     pub ret: VkElType,
@@ -541,6 +559,7 @@ impl VkCommand {
     }
 }
 
+#[derive(Clone)]
 pub struct VkParam {
     pub typ: VkElType,
     pub name: *const str

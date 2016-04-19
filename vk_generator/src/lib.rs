@@ -1,4 +1,5 @@
 extern crate xml;
+extern crate boolinator;
 
 use std::mem;
 

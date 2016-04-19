@@ -4,11 +4,21 @@ use std::collections::HashMap;
 use std::iter::Iterator;
 use std::default;
 
+use boolinator::Boolinator;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct GenConfig {
-    remove_type_prefix: bool,
-    remove_command_prefix: bool,
-    remove_variant_prefix: bool,
-    style_rust: bool
+    pub remove_type_prefix: bool,
+    pub remove_command_prefix: bool,
+    pub remove_variant_prefix: bool,
+    pub snake_case_commands: bool
+}
+
+impl GenConfig {
+    fn modifies_signatures(&self) -> bool {
+        self.remove_command_prefix ||
+        self.snake_case_commands
+    }
 }
 
 impl default::Default for GenConfig {
@@ -17,23 +27,27 @@ impl default::Default for GenConfig {
             remove_type_prefix: true,
             remove_command_prefix: true,
             remove_variant_prefix: true,
-            style_rust: false
+            snake_case_commands: true
         }
     }
 }
 
 struct GenPreproc<'a> {
     types: HashMap<&'a str, VkType>,
+    commands: Vec<VkCommand>,
     registry: &'a VkRegistry<'a>,
-    config: GenConfig
+    config: GenConfig,
+    string_buffer: Option<String>
 }
 
 impl<'a> GenPreproc<'a> {
     fn new(registry: &'a VkRegistry<'a>, version: VkVersion, extensions: &[&str], config: GenConfig) -> GenPreproc<'a> {
         let mut gen = GenPreproc {
+            string_buffer: config.modifies_signatures().as_some(String::with_capacity(registry.buffer_len())),
             types: HashMap::with_capacity(registry.types().len()),
+            commands: Vec::with_capacity(registry.commands().len()),
             registry: registry,
-            config: config
+            config: config,
         };
 
         let feature = gen.registry.features().get(&version).unwrap();
@@ -60,9 +74,10 @@ impl<'a> GenPreproc<'a> {
                 let command = self.registry.commands().get(name).unwrap();
 
                 self.add_type_recurse(&mut (&command.params).into_iter().map(|p| &p.typ).chain(Some(&command.ret)));
+                self.add_command(command.clone());
             },
 
-            Type{name, ..} |
+            Type{name, ..}      |
             ApiConst{name, ..} => {
                 let name = unsafe{ &*name };
                 if name != "vk_platform" {
@@ -73,9 +88,7 @@ impl<'a> GenPreproc<'a> {
             ConstDef{name, value, ..} => {
                 let name = unsafe{ &*name };
                 let value = unsafe{ &*value };
-                if self.types.insert(name, VkType::new_const(name, value)).is_some() {
-                    panic!("Overlapping constants!");
-                }
+                self.insert_type(name, VkType::new_const(name, value));
             },
 
             ExtnEnum{extends, ref variant, ..} => {
@@ -88,7 +101,7 @@ impl<'a> GenPreproc<'a> {
     }
 
     fn add_type(&mut self, name: &'a str) {
-        self.types.entry(name).or_insert(self.registry.types().get(name).unwrap().clone());
+        self.insert_type(name, self.registry.types().get(name).unwrap().clone());
     }
 
     fn add_type_recurse(&mut self, type_iterator: &mut Iterator<Item=&VkElType>) {
@@ -97,18 +110,113 @@ impl<'a> GenPreproc<'a> {
 
             if let Some(type_ptr) = typ.type_ptr() {
                 let type_ptr = unsafe{ &*type_ptr };
-                self.types.entry(type_ptr).or_insert(self.registry.types().get(type_ptr).unwrap().clone());
+                self.add_type(type_ptr);
 
                 match *self.registry.types().get(type_ptr).unwrap() {
                     Struct{fields: ref members, ..} |
                     Union{variants: ref members, ..} => self.add_type_recurse(&mut members.into_iter().map(|m| &m.field_type)),
-                    TypeDef{requires, ..} => 
+                    TypeDef{typ, requires, ..} => {
+                        self.add_type(unsafe{ &*typ });
                         if let Some(requires) = to_option(requires) {
-                            self.types.entry(requires).or_insert(self.registry.types().get(requires).unwrap().clone());
-                        },
+                            self.add_type(requires);
+                        }
+                    }
                     _ => ()
                 }
             }
+        }
+    }
+
+    fn insert_type(&mut self, key: &'a str, mut typ: VkType) {
+        let new_name = self.process_type_ident(typ.name().unwrap());
+        typ.set_name(new_name).ok();
+        if let VkType::TypeDef{typ: ref mut typedef_type, ref mut requires, ..} = typ {
+            *typedef_type = self.process_type_ident(*typedef_type);
+
+            if let Some(req) = to_option(*requires) {
+                *requires = self.process_type_ident(req);
+            }
+        }
+
+        self.types.entry(key).or_insert(typ);
+    }
+
+    fn process_type_ident(&self, ident: *const str) -> *const str {
+        let mut ident = unsafe{ &*ident };
+
+        if self.config.remove_type_prefix {
+            if let Some(0) = ident.find("Vk") {
+                ident = &ident[2..];
+            }
+        }
+
+        ident
+    }
+
+    fn add_command(&mut self, mut command: VkCommand) {
+        for typ in command.params.iter_mut().map(|p| &mut p.typ).chain(Some(&mut command.ret).into_iter()) {
+            if let Some(mut type_ptr) = typ.type_ptr() {
+                type_ptr = self.process_type_ident(type_ptr);
+                typ.set_type(type_ptr);
+            }
+        }
+
+        command.name = self.process_command_ident(command.name);
+
+        self.commands.push(command);
+    }
+
+    fn process_command_ident(&mut self, ident: *const str) -> *const str {
+        let mut ident = unsafe{ &*ident };
+
+        if self.config.remove_command_prefix {
+            if let Some(0) = ident.find("vk") {
+                ident = unsafe{&*self.append_char_func(
+                    |s| {
+                        let mut chars = ident.chars().skip(2);
+                        for c in chars.next().unwrap().to_lowercase().chain(chars) {
+                            s.push(c);
+                        }
+                    }
+                )};
+            }
+        }
+
+        if self.config.snake_case_commands {
+            ident = unsafe{&*self.append_char_func(
+                |s| {
+                    let mut last_uppercase = false;
+                    for c in ident.chars() {
+                        if c.is_uppercase() {
+                            if !last_uppercase {s.push('_')}
+                            last_uppercase = true;
+                        } else {last_uppercase = false}
+
+                        s.push(c.to_lowercase().next().unwrap());
+                    }
+                }
+            )};
+        }
+
+        ident
+    }
+
+    fn append_char_func<F: Fn(&mut String)>(&mut self, processor: F) -> *const str {
+        use std::{slice, str};
+        let string_buffer = self.string_buffer.as_mut().unwrap();
+
+        let prepushcap = string_buffer.capacity();
+        let prepushlen = string_buffer.len();
+        // We want to have all of the string in one block of memory in order to save heap allocation time. 
+        processor(string_buffer);
+
+        if prepushcap != string_buffer.capacity() {
+            panic!("Allocation detected in string buffer")
+        }
+
+        unsafe {
+            let ptr = string_buffer.as_ptr().offset(prepushlen as isize);
+            str::from_utf8_unchecked(slice::from_raw_parts(ptr, string_buffer.len()-prepushlen)) as *const str
         }
     }
 }
@@ -160,6 +268,10 @@ impl<'a> VkRegistry<'a> {
             }
         }
         println!("{}", generator.types.len());
+
+        for command in generator.commands {
+            println!("{:#?}", command);
+        }
     }
 }
 
@@ -167,5 +279,6 @@ pub trait GenRegistry {
     fn features(&self)   -> &HashMap<VkVersion, VkFeature>;
     fn types(&self)      -> &HashMap<&str, VkType>;
     fn commands(&self)   -> &HashMap<&str, VkCommand>;
-    fn extns(&self) -> &HashMap<&str, VkExtn>;
+    fn extns(&self)      -> &HashMap<&str, VkExtn>;
+    fn buffer_len(&self) -> usize;
 }

@@ -17,3 +17,4 @@ exclude = [
 [dependencies]
 vk_api = {path = "../vk_api/"}
 xml-rs = "0.3.0"
+boolinator = "0.1.0"
