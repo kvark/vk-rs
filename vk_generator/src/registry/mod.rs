@@ -104,8 +104,8 @@ impl<'a> GenRegistry for VkRegistry<'a> {
         &self.extns
     }
 
-    fn buffer_len(&self) -> usize {
-        self.string_buffer.len()
+    fn buffer_cap(&self) -> usize {
+        self.string_buffer.capacity()
     }
 }
 
@@ -361,6 +361,22 @@ impl VkVariant {
         VkVariant::Bitpos {
             name: name,
             bitpos: bitpos
+        }
+    }
+
+    pub fn name(&self) -> *const str {
+        use self::VkVariant::*;
+        match *self {
+            Value{name, ..} |
+            Bitpos{name, ..} => name
+        }
+    }
+
+    pub fn set_name(&mut self, new_name: *const str) {
+        use self::VkVariant::*;
+        match *self {
+            Value{ref mut name, ..} |
+            Bitpos{ref mut name, ..} => *name = new_name
         }
     }
 }
