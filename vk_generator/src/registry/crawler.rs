@@ -49,28 +49,40 @@ pub fn crawl<R: Read>(xml_events: Events<R>, registry: &mut VkRegistry) {
                                     if let Some(name) = find_attribute(tag_attrs, "name") {
                                         cur_block = VkBlock::Enums;
                                         registry.push_type(type_buffer).ok();
-                                        type_buffer = VkType::new_enum(registry.append_str(name));
+                                        if "API Constants" == name {
+                                            type_buffer = VkType::new_enum("API Constants");
+                                        } else {
+                                            match find_attribute(tag_attrs, "type") {
+                                                Some("enum")    => type_buffer = VkType::new_enum(registry.append_str(name)),
+                                                Some("bitmask") => type_buffer = VkType::new_bitmask(registry.append_str(name)),
+                                                t               => panic!(format!("Unexpected enum type {:?} {}", t, name))
+                                            }
+                                        }
                                     } else {panic!("Could not find enum name")},
                                 "enum"
                                     if VkBlock::Enums == cur_block =>
                                     if let Some(name) = find_attribute(tag_attrs, "name") {
-                                        if let VkType::Enum{name: enum_name, ref mut variants} = type_buffer {
-                                            let name = registry.append_str(name);
+                                        match type_buffer {
+                                            VkType::Enum{name: enum_name, ref mut variants} |
+                                            VkType::Bitmask{name: enum_name, ref mut variants} => {
+                                                let name = registry.append_str(name);
 
-                                            if "API Constants" == unsafe{ &*enum_name } {
-                                                if let Some(value) = find_attribute(tag_attrs, "value") {
-                                                    let value = registry.append_str(value);
-                                                    registry.push_type(VkType::new_const(name, value)).ok();
-                                                } else {panic!("Could not find value in API Constant")}
-                                            } else {
-                                                variants.push(
+                                                if "API Constants" == unsafe{ &*enum_name } {
                                                     if let Some(value) = find_attribute(tag_attrs, "value") {
-                                                        VkVariant::new_value(name, to_isize(value).unwrap())
-                                                    } else if let Some(bitpos) = find_attribute(tag_attrs, "bitpos") {
-                                                        VkVariant::new_bitpos(name, to_isize(bitpos).unwrap())
-                                                    } else {panic!("Could not find value or bitpos in enum")}
-                                                );
+                                                        let value = registry.append_str(value);
+                                                        registry.push_type(VkType::new_const(name, value)).ok();
+                                                    } else {panic!("Could not find value in API Constant")}
+                                                } else {
+                                                    variants.push(
+                                                        if let Some(value) = find_attribute(tag_attrs, "value") {
+                                                            VkVariant::new_value(name, to_number(value).unwrap())
+                                                        } else if let Some(bitpos) = find_attribute(tag_attrs, "bitpos") {
+                                                            VkVariant::new_bitpos(name, to_number(bitpos).unwrap() as u32)
+                                                        } else {panic!("Could not find value or bitpos in enum")}
+                                                    );
+                                                }
                                             }
+                                            _ => ()
                                         }
                                     } else {panic!("Could not find enum variant name")},
 
@@ -197,7 +209,7 @@ pub fn crawl<R: Read>(xml_events: Events<R>, registry: &mut VkRegistry) {
                                                     let value = isize::from_str_radix(value, 10).unwrap();
                                                     VkVariant::new_value(name, value)
                                                 } else if let Some(bitpos) = find_attribute(tag_attrs, "bitpos") {
-                                                    let bitpos = isize::from_str_radix(bitpos, 10).unwrap();
+                                                    let bitpos = u32::from_str_radix(bitpos, 10).unwrap();
                                                     VkVariant::new_bitpos(name, bitpos)
                                                 } else {panic!("Invalid enum extension; missing \"offset\" or \"bitpos\"")};
 
@@ -375,6 +387,13 @@ pub fn crawl<R: Read>(xml_events: Events<R>, registry: &mut VkRegistry) {
     //                 }
     //             }
 
+    //             VkType::Bitmask{name, ref variants} => {
+    //                 println!("Bitmask {:?}", &*name);
+    //                 for v in variants {
+    //                     println!("\t{:?}", v);
+    //                 }
+    //             }
+
     //             VkType::TypeDef{typ, name, validity, ..} =>
     //                 if validity != 0 {
     //                     panic!("Invalid typedef")
@@ -430,7 +449,7 @@ pub fn crawl<R: Read>(xml_events: Events<R>, registry: &mut VkRegistry) {
     // }
 }
 
-fn to_isize(source: &str) -> Result<isize, ParseIntError> {
+fn to_number(source: &str) -> Result<isize, ParseIntError> {
     if source.len() < 2 || &source[0..2] != "0x" {
         isize::from_str_radix(source, 10)
     } else {

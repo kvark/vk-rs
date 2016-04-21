@@ -329,7 +329,7 @@ pub enum VkVariant {
 
     Bitpos {
         name: *const str,
-        bitpos: isize
+        bitpos: u32
     }
 }
 
@@ -359,7 +359,7 @@ impl VkVariant {
         }
     }
 
-    fn new_bitpos(name: *const str, bitpos: isize) -> VkVariant {
+    fn new_bitpos(name: *const str, bitpos: u32) -> VkVariant {
         VkVariant::Bitpos {
             name: name,
             bitpos: bitpos
@@ -396,6 +396,11 @@ pub enum VkType {
     },
 
     Enum {
+        name: *const str,
+        variants: Vec<VkVariant>
+    },
+
+    Bitmask {
         name: *const str,
         variants: Vec<VkVariant>
     },
@@ -445,6 +450,7 @@ impl VkType {
             Struct{name, ..}       |
             Union{name, ..}        |
             Enum{name, ..}         |
+            Bitmask{name, ..}      |
             Handle{name, ..}       |
             TypeDef{name, ..}      |
             ApiConst{name, ..}     |
@@ -461,6 +467,7 @@ impl VkType {
             Struct{ref mut name, ..}       |
             Union{ref mut name, ..}        |
             Enum{ref mut name, ..}         |
+            Bitmask{ref mut name, ..}      |
             Handle{ref mut name, ..}       |
             TypeDef{ref mut name, ..}      |
             ApiConst{ref mut name, ..}     |
@@ -487,6 +494,13 @@ impl VkType {
 
     pub fn new_enum(name: *const str) -> VkType {
         VkType::Enum {
+            name: name,
+            variants: Vec::with_capacity(8)
+        }
+    }
+
+    pub fn new_bitmask(name: *const str) -> VkType {
+        VkType::Bitmask {
             name: name,
             variants: Vec::with_capacity(8)
         }
