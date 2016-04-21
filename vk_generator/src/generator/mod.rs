@@ -3,6 +3,7 @@ use registry::*;
 use std::collections::HashMap;
 use std::iter::Iterator;
 use std::default;
+use std::fmt::Write;
 
 use boolinator::Boolinator;
 
@@ -37,6 +38,7 @@ impl default::Default for GenConfig {
 
 struct GenPreproc<'a> {
     types: HashMap<&'a str, VkType>,
+    type_ord: Vec<&'a str>,
     commands: Vec<VkCommand>,
     registry: &'a VkRegistry<'a>,
     config: GenConfig,
@@ -48,6 +50,7 @@ impl<'a> GenPreproc<'a> {
         let mut gen = GenPreproc {
             string_buffer: config.modifies_signatures().as_some(String::with_capacity(registry.buffer_cap())),
             types: HashMap::with_capacity(registry.types().len()),
+            type_ord: Vec::with_capacity(registry.types().len()),
             commands: Vec::with_capacity(registry.commands().len()),
             registry: registry,
             config: config,
@@ -131,6 +134,8 @@ impl<'a> GenPreproc<'a> {
     }
 
     fn insert_type(&mut self, key: &'a str, mut typ: VkType) {
+        use std::collections::hash_map::Entry;
+
         let new_name = self.process_type_ident(typ.name().unwrap());
         typ.set_name(new_name).ok();
 
@@ -186,8 +191,10 @@ impl<'a> GenPreproc<'a> {
             }
         }
 
-
-        self.types.entry(key).or_insert(typ);
+        if let Entry::Vacant(ven) = self.types.entry(key) {
+            ven.insert(typ);
+            self.type_ord.push(key);
+        }
     }
 
     fn process_type_ident(&self, ident: *const str) -> *const str {
@@ -268,57 +275,130 @@ impl<'a> GenPreproc<'a> {
     }
 }
 
+struct GenTypes {
+    structs:  String,
+    unions:   String,
+    enums:    String,
+    handles:  String,
+    typedefs: String,
+    consts:   String,
+    externs:  String
+}
+
+impl GenTypes {
+    fn new(processed: &GenPreproc) -> GenTypes {
+        let mut gen_types = GenTypes {
+            structs:  String::with_capacity(2usize.pow(17)),
+            unions:   String::with_capacity(2usize.pow(13)),//take that you superstitious bastards 
+            enums:    String::with_capacity(2usize.pow(16)),
+            handles:  String::with_capacity(2usize.pow(12)),
+            typedefs: String::with_capacity(2usize.pow(13)),
+            consts:   String::with_capacity(2usize.pow(10)),
+            externs:  String::with_capacity(2usize.pow(10))
+        };
+
+        for t in processed.type_ord.iter().map(|k| processed.types.get(k).unwrap()) {
+            use registry::VkType::*;
+            use registry::VkElType::*;
+            match *t {
+                Struct{name, ref fields} => {
+                    let structs = &mut gen_types.structs;
+                    writeln!(structs, "pub struct {} {{", unsafe{ &*name }).ok();
+
+                    for f in fields {
+                        unsafe {
+                            match f.field_type {
+                                Var(ident) => writeln!(structs, "    {}: {},", &*f.field_name, &*ident),
+                                ConstPtr(ident, count) => {
+                                    write!(structs, "    {}: ", &*f.field_name).unwrap();
+                                    for _ in 0..count {
+                                        write!(structs, "*const ").unwrap();
+                                    }
+                                    writeln!(structs, "{},", &*ident)
+                                }
+                                MutPtr(ident, count) => {
+                                    write!(structs, "    {}: ", &*f.field_name).unwrap();
+                                    for _ in 0..count {
+                                        write!(structs, "*mut ").unwrap();
+                                    }
+                                    writeln!(structs, "{},", &*ident)
+                                }
+                                MutArray(ident, count)    => writeln!(structs, "    {}: {}[{}],", &*f.field_name, &*ident, count),
+                                MutArrayEnum(ident, cons) => writeln!(structs, "    {}: {}[{}],", &*f.field_name, &*ident, &*cons),
+
+                                ConstArray(_, _)      |
+                                ConstArrayEnum(_, _) => panic!("Unexpected const array in struct"),
+                                Const(_)             => panic!("Unexpected const {}", &*name),
+                                Void                 => panic!("Unexpected void"),
+                                Unknown              => panic!("Unexpected unknown")
+                            }.unwrap();
+                        }
+                    }
+
+                    structs.push_str("}\n\n");
+                }
+                _ => ()
+            }
+        }
+
+        println!("{}", &gen_types.structs);
+        gen_types
+    }
+}
+
+
 impl<'a> VkRegistry<'a> {
     pub fn gen_global(&self, version: VkVersion, extensions: &[&str], config: GenConfig) {
         let generator = GenPreproc::new(self, version, extensions, config);
+        GenTypes::new(&generator);
 
-        for typ in generator.types.values() {
-            unsafe{
-                match *typ {
-                    VkType::Struct{name, ..}  => {
-                        println!("Struct {:?}", &*name);
-                    }
+        // for typ in generator.type_ord.iter().map(|k| generator.types.get(k).unwrap()) {
+        //     unsafe{
+        //         match *typ {
+        //             VkType::Struct{name, ..}  => {
+        //                 println!("Struct {:?}", &*name);
+        //             }
 
-                    VkType::Union{name, ..} => {
-                        println!("Union {:?}", &*name);
-                    }
+        //             VkType::Union{name, ..} => {
+        //                 println!("Union {:?}", &*name);
+        //             }
 
-                    VkType::Enum{name, ..} => {
-                        println!("Enum {:?}", &*name);
-                    }
+        //             VkType::Enum{name, ..} => {
+        //                 println!("Enum {:?}", &*name);
+        //             }
 
-                    VkType::TypeDef{typ, name, requires, validity} =>
-                        if validity != 0 {
-                            panic!("Invalid typedef")
-                        } else {
-                            println!("TypeDef {:?} {:?} {:?}", &*typ, &*name, to_option(requires))
-                        },
+        //             VkType::TypeDef{typ, name, requires, validity} =>
+        //                 if validity != 0 {
+        //                     panic!("Invalid typedef")
+        //                 } else {
+        //                     println!("TypeDef {:?} {:?} {:?}", &*typ, &*name, to_option(requires))
+        //                 },
 
-                    VkType::Handle{name, validity, dispatchable} =>
-                        if !validity {
-                            panic!("Invalid handle")
-                        } else if dispatchable {
-                            println!("Handle {:?}", &*name)
-                        } else {
-                            println!("Non-Dispatchable Handle {:?}", &*name)
-                        },
+        //             VkType::Handle{name, validity, dispatchable} =>
+        //                 if !validity {
+        //                     panic!("Invalid handle")
+        //                 } else if dispatchable {
+        //                     println!("Handle {:?}", &*name)
+        //                 } else {
+        //                     println!("Non-Dispatchable Handle {:?}", &*name)
+        //                 },
 
-                    VkType::ApiConst{name, value} =>
-                        println!("API Const: {} {}", &*name, &*value),
+        //             VkType::ApiConst{name, value} =>
+        //                 println!("API Const: {} {}", &*name, &*value),
 
-                    VkType::Define{name}      => println!("Define {:?}", &*name),
-                    VkType::FuncPointer{name} => println!("FuncPointer {:?}", &*name),
-                    VkType::ExternType{name, requires}  => println!("ExternType {:?} {:?}", &*name, &*requires),
+        //             VkType::Define{name}      => println!("Define {:?}", &*name),
+        //             VkType::FuncPointer{name} => println!("FuncPointer {:?}", &*name),
+        //             VkType::ExternType{name, requires}  => println!("ExternType {:?} {:?}", &*name, &*requires),
 
-                    VkType::Unhandled => ()
-                }
-            }
-        }
-        println!("{}", generator.types.len());
+        //             VkType::Unhandled => ()
+        //         }
+        //     }
+        // }
+        // println!("{}", generator.types.len());
 
-        for command in generator.commands {
-            println!("{:#?}", command);
-        }
+        // for command in generator.commands {
+        //     println!("{:#?}", command);
+        // }
     }
 }
 

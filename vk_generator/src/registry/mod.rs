@@ -117,8 +117,8 @@ pub enum VkElType {
     Var(*const str),
     /// An intermediate type created when the keyword "const" is detected
     Const(*const str),
-    ConstPtr(*const str),
-    MutPtr(*const str),
+    ConstPtr(*const str, u8),
+    MutPtr(*const str, u8),
     /// An array whose contents are immutable
     ConstArray(*const str, usize),
     /// An array whose contents are mutable
@@ -139,8 +139,8 @@ impl VkElType {
         match *self {
             Var(s)               |
             Const(s)             |
-            ConstPtr(s)          |
-            MutPtr(s)            |
+            ConstPtr(s, _)       |
+            MutPtr(s, _)         |
             ConstArray(s, _)     |
             ConstArrayEnum(s, _) |
             MutArray(s, _)       |
@@ -155,8 +155,8 @@ impl VkElType {
         match *self {
             Var(ref mut s)               |
             Const(ref mut s)             |
-            ConstPtr(ref mut s)          |
-            MutPtr(ref mut s)            | 
+            ConstPtr(ref mut s, _)       |
+            MutPtr(ref mut s, _)         | 
             ConstArray(ref mut s, _)     |
             ConstArrayEnum(ref mut s, _) |
             MutArray(ref mut s, _)       |
@@ -172,8 +172,8 @@ impl VkElType {
         match *self {
             Var(s)               |
             Const(s)            => *self = Const(s),
-            ConstPtr(_)          |
-            MutPtr(_)           => panic!("Attempted changing mutability of pointer"),
+            ConstPtr(_, _)       |
+            MutPtr(_, _)        => panic!("Attempted changing mutability of pointer"),
             ConstArray(_, _)     |
             ConstArrayEnum(_, _) |
             MutArray(_, _)       |
@@ -183,19 +183,19 @@ impl VkElType {
         }
     }
 
-    fn make_ptr(&mut self) {
+    fn make_ptr(&mut self, count: u8) {
         use self::VkElType::*;
         match *self {
-            Var(s)              => *self = MutPtr(s),
-            Const(s)            => *self = ConstPtr(s),
-            MutPtr(_)            |
-            ConstPtr(_)         => panic!("Attempted to change type from pointer to pointer"),
+            Var(s)              => *self = MutPtr(s, count),
+            Const(s)            => *self = ConstPtr(s, count),
+            MutPtr(_, _)         |
+            ConstPtr(_, _)      => panic!("Attempted to change type from pointer to pointer"),
             ConstArray(_, _)     |
             ConstArrayEnum(_, _) |
             MutArrayEnum(_, _)   |
             MutArray(_, _)      => panic!("Attempted to change type from array to pointer"),
             Void                 |
-            Unknown             => *self = MutPtr(null_str())
+            Unknown             => *self = MutPtr(null_str(), count)
         }
     }
 
@@ -204,8 +204,8 @@ impl VkElType {
         match *self {
             Var(s)              => *self = if size == 0 {MutArrayEnum(s, null_str())} else {MutArray(s, size)},
             Const(s)            => *self = if size == 0 {ConstArrayEnum(s, null_str())} else {ConstArray(s, size)},
-            MutPtr(_)            |
-            ConstPtr(_)         => panic!("Attempted to change type from pointer to array"),
+            MutPtr(_, _)         |
+            ConstPtr(_, _)      => panic!("Attempted to change type from pointer to array"),
             ConstArray(_, _)     |
             ConstArrayEnum(_, _) |
             MutArrayEnum(_, _)   |
@@ -220,8 +220,8 @@ impl VkElType {
         match *self {
             Var(_)                      => panic!("Attempted to set array length of Var"),
             Const(_)                    => panic!("Attempted to set array length of Const"),
-            MutPtr(_)                    |
-            ConstPtr(_)                 => panic!("Attempted to set array length of Ptr"),
+            MutPtr(_, _)                 |
+            ConstPtr(_, _)              => panic!("Attempted to set array length of Ptr"),
             ConstArrayEnum(_, ref mut e) |
             MutArrayEnum(_, ref mut e)  => *e = size_enum,
             ConstArray(_, _)             |
@@ -236,8 +236,8 @@ impl VkElType {
         match *self {
             Var(_)              => panic!("Attempted to make Var a void type"),
             Const(_)            => panic!("Attempted to make Const a void type"),
-            MutPtr(_)            |
-            ConstPtr(_)         => panic!("Attempted to make Ptr a void type"),
+            MutPtr(_, _)         |
+            ConstPtr(_, _)      => panic!("Attempted to make Ptr a void type"),
             ConstArrayEnum(_, _) |
             MutArrayEnum(_, _)   |
             ConstArray(_, _)     |
@@ -261,8 +261,8 @@ impl fmt::Debug for VkElType {
                 match *self {
                     Var(p)               => {pt = p; "Var"}
                     Const(p)             => {pt = p; "Const"}
-                    ConstPtr(p)          => {pt = p; "ConstPtr"}
-                    MutPtr(p)            => {pt = p; "MutPtr"}
+                    ConstPtr(p, _)       => {pt = p; "ConstPtr"}
+                    MutPtr(p, _)         => {pt = p; "MutPtr"}
                     ConstArray(p, _)     => {pt = p; "ConstArray"}
                     ConstArrayEnum(p, _) => {pt = p; "ConstArrayEnum"}
                     MutArray(p, _)       => {pt = p; "MutArray"}
@@ -272,6 +272,8 @@ impl fmt::Debug for VkElType {
                 });
             fmt_tuple.field(&to_option(pt));
             match *self {
+                ConstPtr(_, c)       |
+                MutPtr(_, c)        => fmt_tuple.field(&c),
                 ConstArray(_, s)     |
                 MutArray(_, s)      => fmt_tuple.field(&s),
                 ConstArrayEnum(_, e) |

@@ -6,7 +6,7 @@ use xml::attribute::OwnedAttribute;
 use std::io::Read;
 use std::slice::Iter;
 use std::num::ParseIntError;
-use super::{VkRegistry, VkType, VkMember, VkVariant, VkCommand, VkParam, VkFeature, VkVersion, VkReqRem, VkExtn};
+use super::{VkRegistry, VkType, VkMember, VkVariant, VkCommand, VkParam, VkFeature, VkVersion, VkReqRem, VkExtn, VkElType};
 
 pub fn crawl<R: Read>(xml_events: Events<R>, registry: &mut VkRegistry) {
     use self::XmlElement::*;
@@ -218,7 +218,8 @@ pub fn crawl<R: Read>(xml_events: Events<R>, registry: &mut VkRegistry) {
                         // here. Each Characters branch is specific to a certain block type, and what block we're in is     |
                         // stored in the `cur_block` variable.                                                              |
                         Characters{ref chars, tags: (tag, _)}
-                            if VkBlock::Types == cur_block => {
+                            if VkBlock::Types == cur_block && 
+                               "usage" != tag => {
                             let chars = &chars[..];
                             // Not every type contains the same tags; this match statement differentiates them so that they can |
                             // be processed in the manner that they require.
@@ -227,18 +228,7 @@ pub fn crawl<R: Read>(xml_events: Events<R>, registry: &mut VkRegistry) {
                                 VkType::Union{variants: ref mut members, ..} => {
                                     let member = members.last_mut().unwrap();
                                     match tag {
-                                        "member" =>
-                                            match chars {
-                                                "const" => member.field_type.make_const(),
-                                                "*"     => member.field_type.make_ptr(),
-                                                _ 
-                                                    if &chars[0..1] == "[" =>
-                                                    match parse_array_index(chars) {
-                                                        Some((size, _)) => {member.field_type.make_array(size);}
-                                                        None => panic!(format!("Unexpected characters after name: {}", chars))
-                                                    },
-                                                _       => ()
-                                            },
+                                        "member" => process_type(chars, &mut member.field_type),
                                         "type"   => member.field_type.set_type(registry.append_str(chars)),
                                         "name"   =>
                                             // This exists as an `if let` block and isn't just `member.set_name(registry.append_str(chars))`    |
@@ -304,7 +294,8 @@ pub fn crawl<R: Read>(xml_events: Events<R>, registry: &mut VkRegistry) {
                         }
 
                         Characters{ref chars, tags: (tag, Some(tag1))}
-                            if VkBlock::Commands == cur_block => {
+                            if VkBlock::Commands == cur_block &&
+                               "usage" != tag => {
                                 let chars = &chars[..];
                                 let command_buffer = command_buffer.as_mut().unwrap();
 
@@ -314,17 +305,7 @@ pub fn crawl<R: Read>(xml_events: Events<R>, registry: &mut VkRegistry) {
                                 // is going to be a <proto>. In the case that it isn't some shit has gone down and it should        |
                                 // probably be reported.                                                                            |
                                 if let Some(last_param) = command_buffer.params.last_mut() {
-                                    if chars == "const" {
-                                        last_param.typ.make_const();
-                                    } else if chars == "*" {
-                                        last_param.typ.make_ptr();
-                                    } else if &chars[0..1] == "[" {
-                                        if let Some((len, _)) = parse_array_index(chars) {
-                                            last_param.typ.make_array(len)
-                                        } else {
-                                            panic!("Unexpected characters after array operator")
-                                        }
-                                    }
+                                    process_type(chars, &mut last_param.typ);
                                     match tag1 {
                                         "proto" => panic!("Unexpected proto tag"),
                                         "param" =>
@@ -394,7 +375,7 @@ pub fn crawl<R: Read>(xml_events: Events<R>, registry: &mut VkRegistry) {
     //                 }
     //             }
 
-    //             VkType::TypeDef{typ, name, validity} =>
+    //             VkType::TypeDef{typ, name, validity, ..} =>
     //                 if validity != 0 {
     //                     panic!("Invalid typedef")
     //                 } else {
@@ -517,6 +498,25 @@ fn parse_array_index(chars: &str) -> Option<(usize, usize)> {
         }
         '[' => Some((0, 0)),
         _   => None
+    }
+}
+
+fn process_type(chars: &str, field: &mut VkElType) {
+    match chars {
+        "const" => field.make_const(),
+        "*"     => field.make_ptr(1),
+        _ 
+            if &chars[0..1] == "[" =>
+            match parse_array_index(chars) {
+                Some((size, _)) => {field.make_array(size);}
+                None => panic!(format!("Unexpected characters after name: {}", chars))
+            },
+        _       => {
+            let ptr_count = chars.chars().fold(0, |acc, x| if x == '*' {acc + 1} else {acc});
+            if ptr_count > 0 {
+                field.make_ptr(ptr_count);
+            }
+        }
     }
 }
 
