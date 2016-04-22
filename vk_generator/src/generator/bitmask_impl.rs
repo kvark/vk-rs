@@ -31,23 +31,23 @@ impl {0} {{
 
     #[inline]
     pub fn is_empty(self) -> bool {{
-        self.flags == 0
+        self == {0}::empty()
     }}
 
     #[inline]
     pub fn is_all(self) -> bool {{
-        self.flags & 0b{1:b} == 0b{1:b}
+        self & {0}::all() == {0}::all()
     }}
 
     #[inline]
     pub fn intersects(self, other: {0}) -> bool {{
-        self.flags & other.flags != 0
+        self & other != {0}::empty()
     }}
 
     /// Returns true of `other` is a subset of `self`
     #[inline]
     pub fn subset(self, other: {0}) -> bool {{
-        self.flags & other.flags == other.flags
+        self & other == other
     }}
 }}
 

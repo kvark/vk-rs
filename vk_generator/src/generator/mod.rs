@@ -412,6 +412,19 @@ impl GenTypes {
 
                     writeln!(bitmasks, include_str!("bitmask_impl.rs"), unsafe{ &*name }, all_bits).unwrap();
                 }
+
+                Handle{name, dispatchable, ..} => {
+                    let handles = &mut gen_types.handles;
+                    if dispatchable {
+                        writeln!(handles, include_str!("handle_dispatchable.rs"), unsafe{ &*name }).unwrap();
+                    } else {
+                        writeln!(handles, include_str!("handle_nondispatchable.rs"), unsafe{ &*name }).unwrap();
+                    }
+                }
+
+                TypeDef{name, typ, ..} => {
+                    writeln!(gen_types.typedefs, "pub type {} = {};", unsafe{ &*name }, unsafe{ &*typ }).unwrap();
+                }
                 _ => ()
             }
         }
@@ -419,6 +432,8 @@ impl GenTypes {
         println!("{}", &gen_types.structs);
         println!("{}", &gen_types.enums);
         println!("{}", &gen_types.bitmasks);
+        println!("{}", &gen_types.handles);
+        println!("{}", &gen_types.typedefs);
         gen_types
     }
 }
