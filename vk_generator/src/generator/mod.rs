@@ -12,6 +12,7 @@ pub struct GenConfig {
     pub remove_type_prefix: bool,
     pub remove_command_prefix: bool,
     pub remove_enum_prefix: bool,
+    pub remove_bitmask_prefix: bool,
     pub snake_case_commands: bool,
     pub camel_case_enums: bool
 }
@@ -30,6 +31,7 @@ impl default::Default for GenConfig {
             remove_type_prefix: true,
             remove_command_prefix: true,
             remove_enum_prefix: true,
+            remove_bitmask_prefix: true,
             snake_case_commands: true,
             camel_case_enums: true
         }
@@ -101,11 +103,15 @@ impl<'a> GenPreproc<'a> {
                 let extends = unsafe{ &*extends };
                 let mut variant = variant.clone();
 
-                if let VkType::Enum{name, ..} = *self.types.get(extends).unwrap() {
-                    self.process_enum_variant(&mut variant, name);
+                match *self.types.get(extends).unwrap() {
+                    VkType::Enum{name, ..} => self.process_enum_variant(&mut variant, name),
+                    VkType::Bitmask{..}    => self.process_bitmask_variant(&mut variant),
+                    _                      => ()
                 }
-                if let VkType::Enum{ref mut variants, ..} = *self.types.get_mut(extends).unwrap() {
-                    variants.push(variant);
+                match *self.types.get_mut(extends).unwrap() {
+                    VkType::Enum{ref mut variants, ..}     |
+                    VkType::Bitmask{ref mut variants, ..} => variants.push(variant),
+                    _                                     => ()
                 }
             }
         }
@@ -144,16 +150,25 @@ impl<'a> GenPreproc<'a> {
         let new_name = self.process_type_ident(typ.name().unwrap());
         typ.set_name(new_name).ok();
 
-        if let VkType::TypeDef{typ: ref mut typedef_type, ref mut requires, ..} = typ {
-            *typedef_type = self.process_type_ident(*typedef_type);
+        match typ {
+            VkType::TypeDef{typ: ref mut typedef_type, ref mut requires, ..} => {
+                *typedef_type = self.process_type_ident(*typedef_type);
 
-            if let Some(req) = to_option(*requires) {
-                *requires = self.process_type_ident(req);
+                if let Some(req) = to_option(*requires) {
+                    *requires = self.process_type_ident(req);
+                }
             }
-        } else if let VkType::Enum{ref mut variants, name: enum_name} = typ {
-            for v in variants.iter_mut() {
-                self.process_enum_variant(v, enum_name);
-            }
+
+            VkType::Enum{ref mut variants, name: enum_name} =>
+                for v in variants.iter_mut() {
+                    self.process_enum_variant(v, enum_name);
+                },
+
+            VkType::Bitmask{ref mut variants, ..} =>
+                for v in variants.iter_mut() {
+                    self.process_bitmask_variant(v);
+                },
+            _ => ()
         }
 
         if let Entry::Vacant(ven) = self.types.entry(key) {
@@ -172,6 +187,17 @@ impl<'a> GenPreproc<'a> {
         }
 
         ident
+    }
+
+    fn process_bitmask_variant(&self, variant: &mut VkVariant) {
+        let mut name = unsafe{ &*variant.name() };
+
+        if self.config.remove_bitmask_prefix {
+            if let Some(0) = name.find("VK_") {
+                name = &name[3..];
+            }
+        }
+        variant.set_name(name);
     }
 
     fn process_enum_variant(&mut self, variant: &mut VkVariant, enum_name: *const str) {
@@ -288,6 +314,7 @@ struct GenTypes {
     structs:  String,
     unions:   String,
     enums:    String,
+    bitmasks: String,
     handles:  String,
     typedefs: String,
     consts:   String,
@@ -299,7 +326,8 @@ impl GenTypes {
         let mut gen_types = GenTypes {
             structs:  String::with_capacity(2usize.pow(17)),
             unions:   String::with_capacity(2usize.pow(13)),//take that you superstitious bastards 
-            enums:    String::with_capacity(2usize.pow(16)),
+            enums:    String::with_capacity(2usize.pow(15)),
+            bitmasks: String::with_capacity(2usize.pow(15)),
             handles:  String::with_capacity(2usize.pow(12)),
             typedefs: String::with_capacity(2usize.pow(13)),
             consts:   String::with_capacity(2usize.pow(10)),
@@ -366,12 +394,31 @@ impl GenTypes {
 
                     enums.push_str("}\n\n");
                 }
+
+                Bitmask{name, ref variants} => {
+                    let bitmasks = &mut gen_types.bitmasks;
+                    writeln!(bitmasks, include_str!("bitmask_struct.rs"), unsafe{ &*name }).unwrap();
+
+                    let mut all_bits = 0;
+                    for v in variants {unsafe {
+                        let bits = 
+                            match *v {
+                                Value{value, ..}   => value,
+                                Bitpos{bitpos, ..} => 2isize.pow(bitpos)
+                            };
+                        writeln!(bitmasks, "pub const {0}: {1} = {1} {{flags: 0b{2:b}}};", &*v.name(), &*name, bits).unwrap();
+                        all_bits |= bits;
+                    }}
+
+                    writeln!(bitmasks, include_str!("bitmask_impl.rs"), unsafe{ &*name }, all_bits).unwrap();
+                }
                 _ => ()
             }
         }
 
         println!("{}", &gen_types.structs);
         println!("{}", &gen_types.enums);
+        println!("{}", &gen_types.bitmasks);
         gen_types
     }
 }
