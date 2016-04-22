@@ -99,8 +99,13 @@ impl<'a> GenPreproc<'a> {
 
             ExtnEnum{extends, ref variant, ..} => {
                 let extends = unsafe{ &*extends };
+                let mut variant = variant.clone();
+
+                if let VkType::Enum{name, ..} = *self.types.get(extends).unwrap() {
+                    self.process_enum_variant(&mut variant, name);
+                }
                 if let VkType::Enum{ref mut variants, ..} = *self.types.get_mut(extends).unwrap() {
-                    variants.push(variant.clone());
+                    variants.push(variant);
                 }
             }
         }
@@ -146,48 +151,8 @@ impl<'a> GenPreproc<'a> {
                 *requires = self.process_type_ident(req);
             }
         } else if let VkType::Enum{ref mut variants, name: enum_name} = typ {
-            let enum_name = unsafe{ &*enum_name };
-            if self.config.remove_enum_prefix {
-                let name_parts: Vec<_> = enum_name
-                                            .char_indices()
-                                            .filter_map( |(i, c)| (c.is_uppercase()).as_some(i) )
-                                            .chain(Some(enum_name.len()).into_iter())
-                                            .peek_next()
-                                            .map( |(s, e)| enum_name[s..e].to_uppercase() )
-                                            .collect();
-
-                for v in variants.iter_mut() {
-                    let vn = unsafe{ &*v.name() };
-                    let mut index = if self.config.remove_type_prefix {3} else {0};
-                    'na: for n in &name_parts {
-                        if let Some(i) = (&vn[index..]).find(&n[..]) {
-                            index += i + n.len() + 1;
-                        } else {break 'na}
-                    }
-                    v.set_name(&vn[index..]);
-                }
-            }
-
-            if self.config.camel_case_enums {
-                for v in variants.iter_mut() { unsafe{ 
-                    let vn = &*v.name();
-                    let vn_new = self.append_char_func(
-                        |s| {
-                            let mut is_uppercase = true;
-                            for c in vn.chars() {
-                                if c == '_' {
-                                    is_uppercase = true;
-                                } else if is_uppercase {
-                                    s.push(c);
-                                    is_uppercase = false;
-                                } else {
-                                    s.push(c.to_lowercase().next().unwrap())
-                                }
-                            }
-                        }
-                    );
-                    v.set_name(vn_new);
-                }}
+            for v in variants.iter_mut() {
+                self.process_enum_variant(v, enum_name);
             }
         }
 
@@ -207,6 +172,50 @@ impl<'a> GenPreproc<'a> {
         }
 
         ident
+    }
+
+    fn process_enum_variant(&mut self, variant: &mut VkVariant, enum_name: *const str) {
+        let enum_name = unsafe{ &*enum_name };
+        if self.config.remove_enum_prefix {
+            let name_parts: Vec<_> = enum_name
+                                        .char_indices()
+                                        .filter_map( |(i, c)| (c.is_uppercase()).as_some(i) )
+                                        .chain(Some(enum_name.len()).into_iter())
+                                        .peek_next()
+                                        .map( |(s, e)| enum_name[s..e].to_uppercase() )
+                                        .collect();
+
+            let vn = unsafe{ &*variant.name() };
+            let mut index = if self.config.remove_type_prefix {3} else {0};
+            'na: for n in &name_parts {
+                if let Some(i) = (&vn[index..]).find(&n[..]) {
+                    index += i + n.len() + 1;
+                } else {break 'na}
+            }
+            variant.set_name(&vn[index..]);
+        }
+
+        if self.config.camel_case_enums {
+            unsafe{ 
+                let vn = &*variant.name();
+                let vn_new = self.append_char_func(
+                    |s| {
+                        let mut is_uppercase = true;
+                        for c in vn.chars() {
+                            if c == '_' {
+                                is_uppercase = true;
+                            } else if is_uppercase {
+                                s.push(c);
+                                is_uppercase = false;
+                            } else {
+                                s.push(c.to_lowercase().next().unwrap())
+                            }
+                        }
+                    }
+                );
+                variant.set_name(vn_new);
+            }
+        }
     }
 
     fn add_command(&mut self, mut command: VkCommand) {
@@ -300,48 +309,69 @@ impl GenTypes {
         for t in processed.type_ord.iter().map(|k| processed.types.get(k).unwrap()) {
             use registry::VkType::*;
             use registry::VkElType::*;
+            use registry::VkVariant::*;
+
             match *t {
                 Struct{name, ref fields} => {
                     let structs = &mut gen_types.structs;
-                    writeln!(structs, "pub struct {} {{", unsafe{ &*name }).ok();
+                    writeln!(structs, "#[repr(C)]\n#[derive(Debug, Clone)]\npub struct {} {{", unsafe{ &*name }).unwrap();
 
-                    for f in fields {
-                        unsafe {
-                            match f.field_type {
-                                Var(ident) => writeln!(structs, "    {}: {},", &*f.field_name, &*ident),
-                                ConstPtr(ident, count) => {
-                                    write!(structs, "    {}: ", &*f.field_name).unwrap();
-                                    for _ in 0..count {
-                                        write!(structs, "*const ").unwrap();
-                                    }
-                                    writeln!(structs, "{},", &*ident)
+                    for f in fields { unsafe {
+                        match f.field_type {
+                            Var(ident) => writeln!(structs, "    {}: {},", &*f.field_name, &*ident),
+                            ConstPtr(ident, count) => {
+                                write!(structs, "    {}: ", &*f.field_name).unwrap();
+                                for _ in 0..count {
+                                    write!(structs, "*const ").unwrap();
                                 }
-                                MutPtr(ident, count) => {
-                                    write!(structs, "    {}: ", &*f.field_name).unwrap();
-                                    for _ in 0..count {
-                                        write!(structs, "*mut ").unwrap();
-                                    }
-                                    writeln!(structs, "{},", &*ident)
+                                writeln!(structs, "{},", &*ident)
+                            }
+                            MutPtr(ident, count) => {
+                                write!(structs, "    {}: ", &*f.field_name).unwrap();
+                                for _ in 0..count {
+                                    write!(structs, "*mut ").unwrap();
                                 }
-                                MutArray(ident, count)    => writeln!(structs, "    {}: {}[{}],", &*f.field_name, &*ident, count),
-                                MutArrayEnum(ident, cons) => writeln!(structs, "    {}: {}[{}],", &*f.field_name, &*ident, &*cons),
+                                writeln!(structs, "{},", &*ident)
+                            }
+                            MutArray(ident, count)    => writeln!(structs, "    {}: {}[{}],", &*f.field_name, &*ident, count),
+                            MutArrayEnum(ident, cons) => writeln!(structs, "    {}: {}[{}],", &*f.field_name, &*ident, &*cons),
 
-                                ConstArray(_, _)      |
-                                ConstArrayEnum(_, _) => panic!("Unexpected const array in struct"),
-                                Const(_)             => panic!("Unexpected const {}", &*name),
-                                Void                 => panic!("Unexpected void"),
-                                Unknown              => panic!("Unexpected unknown")
-                            }.unwrap();
-                        }
-                    }
+                            ConstArray(_, _)      |
+                            ConstArrayEnum(_, _) => panic!("Unexpected const array in struct"),
+                            Const(_)             => panic!("Unexpected const {}", &*name),
+                            Void                 => panic!("Unexpected void"),
+                            Unknown              => panic!("Unexpected unknown")
+                        }.unwrap();
+                    }}
 
                     structs.push_str("}\n\n");
+                }
+
+                // Unions are currently a pain in the ass to do, as Rust does not have a stable implementation.     |
+                // What they do have, however, is an approved RFC that is currently being implemented. Until those  |
+                // become reality the unions currently present in Vulkan are simply going to be hard-coded into the |
+                // generator with a fairly shitty, although functional, implementation.                             |
+                Union{..} => (),
+
+                Enum{name, ref variants} => {
+                    let enums = &mut gen_types.enums;
+                    writeln!(enums, "#[repr(C)]\n#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]\npub enum {} {{", unsafe{ &*name }).unwrap();
+
+                    for v in variants {unsafe {
+                        match *v {
+                            Value{name, value} => writeln!(enums, "    {} = {},", &*name, value),
+                            Bitpos{..}         => panic!("Found bitpos in non-biflags enum")
+                        }.unwrap();
+                    }}
+
+                    enums.push_str("}\n\n");
                 }
                 _ => ()
             }
         }
 
         println!("{}", &gen_types.structs);
+        println!("{}", &gen_types.enums);
         gen_types
     }
 }
