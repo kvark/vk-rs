@@ -14,7 +14,9 @@ pub struct GenConfig {
     pub remove_enum_prefix: bool,
     pub remove_bitmask_prefix: bool,
     pub snake_case_commands: bool,
-    pub camel_case_enums: bool
+    pub camel_case_enums: bool,
+
+    pub wrap_bitmasks: bool
 }
 
 impl GenConfig {
@@ -33,7 +35,9 @@ impl default::Default for GenConfig {
             remove_enum_prefix: true,
             remove_bitmask_prefix: true,
             snake_case_commands: true,
-            camel_case_enums: true
+            camel_case_enums: true,
+
+            wrap_bitmasks: false
         }
     }
 }
@@ -408,20 +412,35 @@ impl GenTypes {
                 Bitmask{name, ref variants} => {
                     let bitmasks = &mut gen_types.bitmasks;
                     let flags_name = unsafe{ &*processed.types.get("VkFlags").unwrap().name().unwrap() };
-                    writeln!(bitmasks, include_str!("bitmask_struct.rs"), unsafe{ &*name }, flags_name).unwrap();
 
-                    let mut all_bits = 0;
-                    for v in variants {unsafe {
-                        let bits = 
-                            match *v {
-                                Value{value, ..}   => value,
-                                Bitpos{bitpos, ..} => 2isize.pow(bitpos)
-                            };
-                        writeln!(bitmasks, "pub const {0}: {1} = {1} {{flags: 0b{2:b}}};", &*v.name(), &*name, bits).unwrap();
-                        all_bits |= bits;
-                    }}
+                    if processed.config.wrap_bitmasks {
+                        writeln!(bitmasks, include_str!("bitmask_struct.rs"), unsafe{ &*name }, flags_name).unwrap();
 
-                    writeln!(bitmasks, include_str!("bitmask_impl.rs"), unsafe{ &*name }, all_bits, flags_name).unwrap();
+                        let mut all_bits = 0;
+                        for v in variants {unsafe {
+                            let bits = 
+                                match *v {
+                                    Value{value, ..}   => value,
+                                    Bitpos{bitpos, ..} => 2isize.pow(bitpos)
+                                };
+                            writeln!(bitmasks, "pub const {0}: {1} = {1} {{flags: 0b{2:b}}};", &*v.name(), &*name, bits).unwrap();
+                            all_bits |= bits;
+                        }}
+
+                        writeln!(bitmasks, include_str!("bitmask_impl.rs"), unsafe{ &*name }, all_bits, flags_name).unwrap();
+                    } else {
+                        writeln!(bitmasks, "pub type {} = {};", unsafe{ &*name }, flags_name).unwrap();
+
+                        for v in variants {unsafe {
+                            let bits = 
+                                match *v {
+                                    Value{value, ..}   => value,
+                                    Bitpos{bitpos, ..} => 2isize.pow(bitpos)
+                                };
+                            writeln!(bitmasks, "pub const {0}: {1} = 0b{2:b};", &*v.name(), &*name, bits).unwrap();
+                        }}
+                        bitmasks.push('\n');
+                    }
                 }
 
                 Handle{name, dispatchable, ..} => {
