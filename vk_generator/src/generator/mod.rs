@@ -8,7 +8,7 @@ use std::fmt::Write;
 use boolinator::Boolinator;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct GenConfig {
+pub struct GenConfig<'a> {
     pub remove_type_prefix: bool,
     pub remove_command_prefix: bool,
     pub remove_enum_prefix: bool,
@@ -16,10 +16,12 @@ pub struct GenConfig {
     pub snake_case_commands: bool,
     pub camel_case_enums: bool,
 
-    pub wrap_bitmasks: bool
+    pub wrap_bitmasks: bool,
+    pub use_libc_types: bool,
+    pub extern_type_overrides: &'a [(&'a str, &'a str)]
 }
 
-impl GenConfig {
+impl<'a> GenConfig<'a> {
     fn modifies_signatures(&self) -> bool {
         self.remove_command_prefix ||
         self.snake_case_commands ||
@@ -27,8 +29,8 @@ impl GenConfig {
     }
 }
 
-impl default::Default for GenConfig {
-    fn default() -> GenConfig{
+impl<'a> default::Default for GenConfig<'a> {
+    fn default() -> GenConfig<'a> {
         GenConfig {
             remove_type_prefix: true,
             remove_command_prefix: true,
@@ -37,23 +39,25 @@ impl default::Default for GenConfig {
             snake_case_commands: true,
             camel_case_enums: true,
 
-            wrap_bitmasks: false
+            wrap_bitmasks: true,
+            use_libc_types: false,
+            extern_type_overrides: &[]
         }
     }
 }
 
-struct GenPreproc<'a> {
+struct GenPreproc<'a, 'b> {
     types: HashMap<&'a str, VkType>,
     type_ord: Vec<&'a str>,
     const_types: HashMap<&'a str, ConstType>,
     commands: Vec<VkCommand>,
     registry: &'a VkRegistry<'a>,
-    config: GenConfig,
+    config: GenConfig<'b>,
     string_buffer: Option<String>
 }
 
-impl<'a> GenPreproc<'a> {
-    fn new(registry: &'a VkRegistry<'a>, version: VkVersion, extensions: &[&str], config: GenConfig) -> GenPreproc<'a> {
+impl<'a, 'b> GenPreproc<'a, 'b> {
+    fn new(registry: &'a VkRegistry<'a>, version: VkVersion, extensions: &[&str], config: GenConfig<'b>) -> GenPreproc<'a, 'b> {
         let mut gen = GenPreproc {
             string_buffer: config.modifies_signatures().as_some(String::with_capacity(registry.buffer_cap())),
             types: HashMap::with_capacity(registry.types().len()),
@@ -419,7 +423,8 @@ impl GenTypes {
 
                 Enum{name, ref variants} => {
                     let enums = &mut gen_types.enums;
-                    writeln!(enums, "#[repr(C)]\n#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]\npub enum {} {{", unsafe{ &*name }).unwrap();
+                    let name = unsafe{ &*name };
+                    writeln!(enums, "#[repr(C)]\n#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]\npub enum {} {{", name).unwrap();
 
                     for v in variants {unsafe {
                         match *v {
@@ -433,10 +438,11 @@ impl GenTypes {
 
                 Bitmask{name, ref variants} => {
                     let bitmasks = &mut gen_types.bitmasks;
+                    let name = unsafe{ &*name };
                     let flags_name = unsafe{ &*processed.types.get("VkFlags").unwrap().name().unwrap() };
 
                     if processed.config.wrap_bitmasks {
-                        writeln!(bitmasks, include_str!("bitmask_struct.rs"), unsafe{ &*name }, flags_name).unwrap();
+                        writeln!(bitmasks, include_str!("bitmask_struct.rs"), name, flags_name).unwrap();
 
                         let mut all_bits = 0;
                         for v in variants {unsafe {
@@ -445,13 +451,13 @@ impl GenTypes {
                                     Value{value, ..}   => value,
                                     Bitpos{bitpos, ..} => 2isize.pow(bitpos)
                                 };
-                            writeln!(bitmasks, "pub const {0}: {1} = {1} {{flags: 0b{2:b}}};", &*v.name(), &*name, bits).unwrap();
+                            writeln!(bitmasks, "pub const {0}: {1} = {1} {{flags: 0b{2:b}}};", &*v.name(), name, bits).unwrap();
                             all_bits |= bits;
                         }}
 
-                        writeln!(bitmasks, include_str!("bitmask_impl.rs"), unsafe{ &*name }, all_bits, flags_name).unwrap();
+                        writeln!(bitmasks, include_str!("bitmask_impl.rs"), name, all_bits, flags_name).unwrap();
                     } else {
-                        writeln!(bitmasks, "pub type {} = {};", unsafe{ &*name }, flags_name).unwrap();
+                        writeln!(bitmasks, "pub type {} = {};", name, flags_name).unwrap();
 
                         for v in variants {unsafe {
                             let bits = 
@@ -459,7 +465,7 @@ impl GenTypes {
                                     Value{value, ..}   => value,
                                     Bitpos{bitpos, ..} => 2isize.pow(bitpos)
                                 };
-                            writeln!(bitmasks, "pub const {0}: {1} = 0b{2:b};", &*v.name(), &*name, bits).unwrap();
+                            writeln!(bitmasks, "pub const {0}: {1} = 0b{2:b};", &*v.name(), name, bits).unwrap();
                         }}
                         bitmasks.push('\n');
                     }
@@ -467,10 +473,11 @@ impl GenTypes {
 
                 Handle{name, dispatchable, ..} => {
                     let handles = &mut gen_types.handles;
+                    let name = unsafe{ &*name };
                     if dispatchable {
-                        writeln!(handles, include_str!("handle_dispatchable.rs"), unsafe{ &*name }).unwrap();
+                        writeln!(handles, include_str!("handle_dispatchable.rs"), name).unwrap();
                     } else {
-                        writeln!(handles, include_str!("handle_nondispatchable.rs"), unsafe{ &*name }).unwrap();
+                        writeln!(handles, include_str!("handle_nondispatchable.rs"), name).unwrap();
                     }
                 }
 
@@ -532,6 +539,60 @@ impl GenTypes {
                         _ => ()
                     }
                 }
+
+                ExternType{name, requires} => {
+                    let externs = &mut gen_types.externs;
+                    let (name, requires) = unsafe{ (&*name, &*requires) };
+                    if let Some(over) = processed.config.extern_type_overrides.iter().find(|o| o.0 == name) {
+                        writeln!(externs, "pub type {} = ::{};", name, over.1).unwrap();
+                    } else if "vk_platform" == requires {
+                        if processed.config.use_libc_types {
+                            writeln!(externs, "use libc::{};", name).unwrap();
+                        } else {
+                            let typ =
+                                match name {
+                                    "c_void" => "()",
+                                    // Following taken from libc
+                                    "int8_t" => "i8",
+                                    "int16_t" => "i16",
+                                    "int32_t" => "i32",
+                                    "int64_t" => "i64",
+                                    "uint8_t" => "u8",
+                                    "uint16_t" => "u16",
+                                    "uint32_t" => "u32",
+                                    "uint64_t" => "u64",
+
+                                    "c_schar" => "i8",
+                                    "c_uchar" => "u8",
+                                    "c_short" => "i16",
+                                    "c_ushort" => "u16",
+                                    "c_int" => "i32",
+                                    "c_uint" => "u32",
+                                    "c_float" => "f32",
+                                    "c_double" => "f64",
+                                    "c_longlong" => "i64",
+                                    "c_ulonglong" => "u64",
+                                    "intmax_t" => "i64",
+                                    "uintmax_t" => "u64",
+
+                                    "size_t" => "usize",
+                                    "ptrdiff_t" => "isize",
+                                    "intptr_t" => "isize",
+                                    "uintptr_t" => "usize",
+                                    "ssize_t" => "isize",
+
+                                    #[cfg(all(not(target = "aarch64-unknown-linux-gnu"), not(target = "arm-unknown-linux-gnueabihf"), not(target = "arm-linux-androideabi")))]
+                                    "c_char" => "i8",
+                                    #[cfg(all(target = "aarch64-unknown-linux-gnu", target = "arm-unknown-linux-gnueabihf", target = "arm-linux-androideabi"))]
+                                    "c_char" => "u8",
+                                    _ => panic!("Unexpected C type")
+                                };
+                            writeln!(externs, "pub type {} = {};", name, typ).unwrap();
+                        }
+                    } else {
+                        writeln!(externs, "pub type {} = *const ();", name).unwrap();
+                    }
+                }
                 _ => ()
             }
         }
@@ -542,6 +603,7 @@ impl GenTypes {
         println!("{}", &gen_types.handles);
         println!("{}", &gen_types.typedefs);
         println!("{}", &gen_types.consts);
+        println!("{}", &gen_types.externs);
         gen_types
     }
 }
