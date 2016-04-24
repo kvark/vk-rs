@@ -88,10 +88,10 @@ impl<'a> GenPreproc<'a> {
         match *interface {
             Command{name, ..} => {
                 let name = unsafe{ &*name };
-                let command = self.registry.commands().get(name).unwrap();
+                let mut command = self.registry.commands().get(name).unwrap().clone();
 
-                self.add_type_recurse(&mut (&command.params).into_iter().map(|p| &p.typ).chain(Some(&command.ret)));
-                self.add_command(command.clone());
+                self.add_type_recurse(&mut (&mut command.params).into_iter().map(|p| &mut p.typ).chain(Some(&mut command.ret)));
+                self.add_command(command);
             },
 
             Type{name, ..}      |
@@ -125,40 +125,44 @@ impl<'a> GenPreproc<'a> {
         }
     }
 
-    fn add_type(&mut self, name: &'a str) {
-        self.insert_type(name, self.registry.types().get(name).unwrap().clone());
-    }
-
-    fn add_type_recurse(&mut self, type_iterator: &mut Iterator<Item=&VkElType>) {
+    fn add_type_recurse(&mut self, type_iterator: &mut Iterator<Item=&mut VkElType>) {
         for typ in type_iterator {
             use registry::VkType::*;
 
             if let Some(type_ptr) = typ.type_ptr() {
+                typ.set_type(self.process_type_ident(type_ptr));
                 let type_ptr = unsafe{ &*type_ptr };
-                self.add_type(type_ptr);
-
                 match *typ {
                     VkElType::ConstArrayEnum(_, c) |
                     VkElType::MutArrayEnum(_, c)  => self.const_types.insert(unsafe{ &*c }, ConstType::USize),
                     _ => None
                 };
 
-                match *self.registry.types().get(type_ptr).unwrap() {
-                    Struct{fields: ref members, ..} |
-                    Union{variants: ref members, ..} => self.add_type_recurse(&mut members.into_iter().map(|m| &m.field_type)),
-                    TypeDef{typ, requires, ..} => {
-                        self.add_type(unsafe{ &*typ });
-                        if let Some(requires) = to_option(requires) {
-                            self.add_type(requires);
+                if let Some(t) = self.add_type(type_ptr) {
+                    unsafe {
+                        match *t {
+                            Struct{fields: ref mut members, ..} |
+                            Union{variants: ref mut members, ..} => self.add_type_recurse(&mut members.into_iter().map(|m| &mut m.field_type)),
+                            TypeDef{..} => 
+                                if let TypeDef{typ, requires, ..} = *self.registry.types().get(type_ptr).unwrap() {
+                                    self.add_type(&*typ);
+                                    if let Some(requires) = to_option(requires) {
+                                        self.add_type(requires);
+                                    }
+                                } else {panic!("Registry type does not match up with modified type")},
+                            _ => ()
                         }
                     }
-                    _ => ()
                 }
             }
         }
     }
 
-    fn insert_type(&mut self, key: &'a str, mut typ: VkType) {
+    fn add_type(&mut self, name: &'a str) -> Option<*mut VkType> {
+        self.insert_type(name, self.registry.types().get(name).unwrap().clone())
+    }
+
+    fn insert_type(&mut self, key: &'a str, mut typ: VkType) -> Option<*mut VkType> {
         use std::collections::hash_map::Entry;
 
         let new_name = self.process_type_ident(typ.name().unwrap());
@@ -186,13 +190,31 @@ impl<'a> GenPreproc<'a> {
         }
 
         if let Entry::Vacant(ven) = self.types.entry(key) {
-            ven.insert(typ);
             self.type_ord.push(key);
-        }
+            Some(ven.insert(typ))
+        } else {None}
     }
 
     fn process_type_ident(&self, ident: *const str) -> *const str {
         let mut ident = unsafe{ &*ident };
+
+        match ident {
+            "void"      => ident = "c_void",
+            "char"      => ident = "c_char",
+            "double"    => ident = "c_double",
+            "float"     => ident = "c_float",
+            "int"       => ident = "c_int",
+            "long"      => ident = "c_long",
+            "longlong"  => ident = "c_longlong",
+            "schar"     => ident = "c_schar",
+            "short"     => ident = "c_short",
+            "uchar"     => ident = "c_uchar",
+            "uint"      => ident = "c_uint",
+            "ulong"     => ident = "c_ulong",
+            "ulonglong" => ident = "c_ulonglong",
+            "ushort"    => ident = "c_ushort",
+            _ => ()
+        }
 
         if self.config.remove_type_prefix {
             if let Some(0) = ident.find("Vk") {
