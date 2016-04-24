@@ -11,12 +11,12 @@ impl {0} {{
     }}
 
     #[inline]
-    pub fn flags(self) -> VkFlags {{
+    pub fn flags(self) -> {2} {{
         self.flags
     }}
 
     #[inline]
-    pub fn from_flags(flags: VkFlags) -> Option<{0}> {{
+    pub fn from_flags(flags: {2}) -> Option<{0}> {{
         if flags & !0b{1:b} == 0 {{
             Some({0} {{flags: flags}})
         }} else {{
@@ -25,7 +25,7 @@ impl {0} {{
     }}
 
     #[inline]
-    pub fn from_flags_truncate(flags: VkFlags) -> {0} {{
+    pub fn from_flags_truncate(flags: {2}) -> {0} {{
         {0} {{flags: flags & 0b{1:b}}}
     }}
 

@@ -41,6 +41,7 @@ impl default::Default for GenConfig {
 struct GenPreproc<'a> {
     types: HashMap<&'a str, VkType>,
     type_ord: Vec<&'a str>,
+    const_types: HashMap<&'a str, ConstType>,
     commands: Vec<VkCommand>,
     registry: &'a VkRegistry<'a>,
     config: GenConfig,
@@ -53,6 +54,7 @@ impl<'a> GenPreproc<'a> {
             string_buffer: config.modifies_signatures().as_some(String::with_capacity(registry.buffer_cap())),
             types: HashMap::with_capacity(registry.types().len()),
             type_ord: Vec::with_capacity(registry.types().len()),
+            const_types: HashMap::with_capacity(registry.core_consts().len()),
             commands: Vec::with_capacity(registry.commands().len()),
             registry: registry,
             config: config,
@@ -60,10 +62,13 @@ impl<'a> GenPreproc<'a> {
 
         let feature = gen.registry.features().get(&version).unwrap();
 
+        for c in registry.core_consts() {
+            gen.add_type(c);
+        }
+
         for req in &feature.require {
             gen.add_interface(req);
         }
-
         for e in extensions {
             let ex = gen.registry.extns().get(e).unwrap();
             for req in &ex.require {
@@ -102,7 +107,6 @@ impl<'a> GenPreproc<'a> {
             ExtnEnum{extends, ref variant, ..} => {
                 let extends = unsafe{ &*extends };
                 let mut variant = variant.clone();
-
                 match *self.types.get(extends).unwrap() {
                     VkType::Enum{name, ..} => self.process_enum_variant(&mut variant, name),
                     VkType::Bitmask{..}    => self.process_bitmask_variant(&mut variant),
@@ -128,6 +132,12 @@ impl<'a> GenPreproc<'a> {
             if let Some(type_ptr) = typ.type_ptr() {
                 let type_ptr = unsafe{ &*type_ptr };
                 self.add_type(type_ptr);
+
+                match *typ {
+                    VkElType::ConstArrayEnum(_, c) |
+                    VkElType::MutArrayEnum(_, c)  => self.const_types.insert(unsafe{ &*c }, ConstType::USize),
+                    _ => None
+                };
 
                 match *self.registry.types().get(type_ptr).unwrap() {
                     Struct{fields: ref members, ..} |
@@ -397,7 +407,8 @@ impl GenTypes {
 
                 Bitmask{name, ref variants} => {
                     let bitmasks = &mut gen_types.bitmasks;
-                    writeln!(bitmasks, include_str!("bitmask_struct.rs"), unsafe{ &*name }).unwrap();
+                    let flags_name = unsafe{ &*processed.types.get("VkFlags").unwrap().name().unwrap() };
+                    writeln!(bitmasks, include_str!("bitmask_struct.rs"), unsafe{ &*name }, flags_name).unwrap();
 
                     let mut all_bits = 0;
                     for v in variants {unsafe {
@@ -410,7 +421,7 @@ impl GenTypes {
                         all_bits |= bits;
                     }}
 
-                    writeln!(bitmasks, include_str!("bitmask_impl.rs"), unsafe{ &*name }, all_bits).unwrap();
+                    writeln!(bitmasks, include_str!("bitmask_impl.rs"), unsafe{ &*name }, all_bits, flags_name).unwrap();
                 }
 
                 Handle{name, dispatchable, ..} => {
@@ -425,6 +436,61 @@ impl GenTypes {
                 TypeDef{name, typ, ..} => {
                     writeln!(gen_types.typedefs, "pub type {} = {};", unsafe{ &*name }, unsafe{ &*typ }).unwrap();
                 }
+
+                ApiConst{name, value} => {
+                    use self::ConstType::*;
+
+                    let consts = &mut gen_types.consts;
+                    let (name, value) = unsafe{ (&*name, (&*value).trim()) };
+                    let mut typ = processed.const_types.get(name).map(|t| *t).unwrap_or(Unknown);
+                    let mut slice_indices = (0, value.len());
+
+                    for (b, c) in value.char_indices() {
+                        match c {
+                            ')'                    => (),
+                            '(' if typ != Str      => slice_indices.0 = b+1,
+                            'U' if typ == Unsigned => slice_indices.1 = b,
+                            'U' if typ != Str      => panic!("Unexpected U in {:?} {}; {}", typ, name, c),
+                            'L' if typ == Unsigned => typ = ULong,
+                            'L' if typ == ULong    => typ = ULongLong,
+                            '"'                    => typ = Str,
+                            '.' if typ == Unsigned => typ = Float,
+                            'f' if typ == Float    => slice_indices.1 = b,
+                            _   if 
+                                 typ == Unknown &&
+                                 c.is_digit(10)    => typ = Unsigned,
+                            _   if
+                                 (typ == Unsigned  ||
+                                  typ == ULongLong ||
+                                  typ == USize     ||
+                                  typ == Float)    &&
+                                 !c.is_digit(10)   => panic!("Unexpected non-digit in {:?} {}; {}", typ, name, c),
+                            _ => ()
+                        }
+                    }
+
+                    let sliced_value = &value[slice_indices.0..slice_indices.1];
+                    match typ {
+                        Unsigned  => write!(consts, "pub const {}: uint32_t = ", name),
+                        ULong     => write!(consts, "pub const {}: c_ulong = ", name),
+                        ULongLong => write!(consts, "pub const {}: c_ulonglong =", name),
+                        USize     => write!(consts, "pub const {}: size_t = ", name),
+                        Float     => writeln!(consts, "pub const {}: c_float = {};", name, sliced_value),
+                        Str       => writeln!(consts, "pub const {}: &'static str = {};", name, sliced_value),
+                        Unknown   => panic!("Unknown const class")
+                    }.unwrap();
+
+                    match typ {
+                        Unsigned   |
+                        ULong      |
+                        ULongLong  |
+                        USize     =>
+                            if '~' == sliced_value.chars().next().unwrap() {
+                                writeln!(consts, "!{};", &sliced_value[1..])
+                            } else {writeln!(consts, "{};", sliced_value)}.unwrap(),
+                        _ => ()
+                    }
+                }
                 _ => ()
             }
         }
@@ -434,8 +500,23 @@ impl GenTypes {
         println!("{}", &gen_types.bitmasks);
         println!("{}", &gen_types.handles);
         println!("{}", &gen_types.typedefs);
+        println!("{}", &gen_types.consts);
         gen_types
     }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum ConstType {
+    /// A floating-point number
+    Float,
+    /// An unsigned integer
+    Unsigned,
+    ULong,
+    ULongLong,
+    USize,
+    /// A string
+    Str,
+    Unknown
 }
 
 
@@ -495,11 +576,12 @@ impl<'a> VkRegistry<'a> {
 }
 
 pub trait GenRegistry {
-    fn features(&self)   -> &HashMap<VkVersion, VkFeature>;
-    fn types(&self)      -> &HashMap<&str, VkType>;
-    fn commands(&self)   -> &HashMap<&str, VkCommand>;
-    fn extns(&self)      -> &HashMap<&str, VkExtn>;
-    fn buffer_cap(&self) -> usize;
+    fn features(&self)    -> &HashMap<VkVersion, VkFeature>;
+    fn types(&self)       -> &HashMap<&str, VkType>;
+    fn commands(&self)    -> &HashMap<&str, VkCommand>;
+    fn extns(&self)       -> &HashMap<&str, VkExtn>;
+    fn buffer_cap(&self)  -> usize;
+    fn core_consts(&self) -> &Vec<&str>;
 }
 
 struct PeekNext<I: Iterator> {

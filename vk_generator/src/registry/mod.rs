@@ -15,6 +15,7 @@ fn null_str() -> *const str {
 pub struct VkRegistry<'a> {
     string_buffer: String,
     types: HashMap<&'a str, VkType>,
+    core_consts: Vec<&'a str>,
     commands: HashMap<&'a str, VkCommand>,
     features: HashMap<VkVersion, VkFeature>,
     extns: HashMap<&'a str, VkExtn>
@@ -25,6 +26,7 @@ impl<'a> VkRegistry<'a> {
         let mut registry = VkRegistry {
             string_buffer: String::with_capacity(vk_xml.len()),
             types: HashMap::with_capacity(512),
+            core_consts: Vec::with_capacity(16),
             commands: HashMap::with_capacity(256),
             features: HashMap::with_capacity(8),
             extns: HashMap::with_capacity(64)
@@ -35,9 +37,13 @@ impl<'a> VkRegistry<'a> {
     }
 
     fn push_type(&mut self, vk_type: VkType) -> Result<(), ()> {
+        if let VkType::ApiConst{name, ..} = vk_type {
+            self.core_consts.push(unsafe{ &*name });
+        }
+
         match vk_type {
-            VkType::Unhandled => Err(()),
-            vk_type           => unsafe{ 
+            VkType::Unhandled     => Err(()),
+            vk_type               => unsafe{ 
                 let name = vk_type.name().unwrap();
                 if "API Constants" != &*name {
                     self.types.insert(&*vk_type.name().unwrap(), vk_type); 
@@ -106,6 +112,10 @@ impl<'a> GenRegistry for VkRegistry<'a> {
 
     fn buffer_cap(&self) -> usize {
         self.string_buffer.capacity()
+    }
+
+    fn core_consts(&self) -> &Vec<&str> {
+        &self.core_consts
     }
 }
 
