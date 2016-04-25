@@ -11,7 +11,7 @@ use boolinator::Boolinator;
 pub struct GenConfig<'a> {
     pub remove_type_prefix: bool,
     pub remove_command_prefix: bool,
-    pub remove_enum_prefix: bool,
+    pub remove_enum_padding: bool,
     pub remove_bitmask_prefix: bool,
     pub snake_case_commands: bool,
     pub camel_case_enums: bool,
@@ -34,7 +34,7 @@ impl<'a> default::Default for GenConfig<'a> {
         GenConfig {
             remove_type_prefix: true,
             remove_command_prefix: true,
-            remove_enum_prefix: true,
+            remove_enum_padding: true,
             remove_bitmask_prefix: true,
             snake_case_commands: true,
             camel_case_enums: true,
@@ -44,6 +44,12 @@ impl<'a> default::Default for GenConfig<'a> {
             extern_type_overrides: &[]
         }
     }
+}
+
+fn process_member_name(name: *const str) -> *const str {
+    if "type" == unsafe{ &*name } {
+        "typ"
+    } else {name}
 }
 
 struct GenPreproc<'a, 'b> {
@@ -146,7 +152,12 @@ impl<'a, 'b> GenPreproc<'a, 'b> {
                     unsafe {
                         match *t {
                             Struct{fields: ref mut members, ..} |
-                            Union{variants: ref mut members, ..} => self.add_type_recurse(&mut members.into_iter().map(|m| &mut m.field_type)),
+                            Union{variants: ref mut members, ..} => 
+                                self.add_type_recurse(&mut members.into_iter().map(
+                                    |m| {
+                                        m.field_name = process_member_name(m.field_name);
+                                        &mut m.field_type
+                                    })),
                             TypeDef{..} => 
                                 if let TypeDef{typ, requires, ..} = *self.registry.types().get(type_ptr).unwrap() {
                                     self.add_type(&*typ);
@@ -242,7 +253,7 @@ impl<'a, 'b> GenPreproc<'a, 'b> {
 
     fn process_enum_variant(&mut self, variant: &mut VkVariant, enum_name: *const str) {
         let enum_name = unsafe{ &*enum_name };
-        if self.config.remove_enum_prefix {
+        if self.config.remove_enum_padding {
             let name_parts: Vec<_> = enum_name
                                         .char_indices()
                                         .filter_map( |(i, c)| (c.is_uppercase()).as_some(i) )
@@ -250,15 +261,39 @@ impl<'a, 'b> GenPreproc<'a, 'b> {
                                         .peek_next()
                                         .map( |(s, e)| enum_name[s..e].to_uppercase() )
                                         .collect();
-
             let vn = unsafe{ &*variant.name() };
-            let mut index = if self.config.remove_type_prefix {3} else {0};
+            // These are the indicies of various parts of the variant name, shown by example:
+            // If the enum is named `VkImageType`, and has the variant `VK_IMAGE_TYPE_1D`:
+            // 
+            // VK_IMAGE_TYPE_1D
+            //               ^ `start` is this index
+            // VK_IMAGE_TYPE_1D
+            //          ^ `old_start` is this index
+            //
+            // `old_start` is used instead of `start` if `start` points to an index where it could not create a
+            // valid identifier (i.e. `1D` is not a valid ident, but `Type1D` or `TYPE_1D` is)
+            let mut old_start = 0;
+            let mut start = if self.config.remove_type_prefix {3} else {0};
+
             'na: for n in &name_parts {
-                if let Some(i) = (&vn[index..]).find(&n[..]) {
-                    index += i + n.len() + 1;
+                if vn[start..].starts_with(n) {
+                    old_start = start;
+                    start += n.len() + 1;
                 } else {break 'na}
             }
-            variant.set_name(&vn[index..]);
+
+            let mut end = vn.len();
+            'ne: for n in name_parts.iter().rev() {
+                if vn[..end].ends_with(n) {
+                    end -= n.len();
+                } else if vn[..end].ends_with('_') {
+                    end -= 1;
+                } else {break 'ne}
+            }
+
+            if !vn[start..end].chars().next().unwrap().is_digit(10) {
+                variant.set_name(&vn[start..end]);
+            } else {variant.set_name(&vn[old_start..])}
         }
 
         if self.config.camel_case_enums {
@@ -401,8 +436,8 @@ impl GenTypes {
                                 }
                                 writeln!(structs, "{},", &*ident)
                             }
-                            MutArray(ident, count)    => writeln!(structs, "    {}: {}[{}],", &*f.field_name, &*ident, count),
-                            MutArrayEnum(ident, cons) => writeln!(structs, "    {}: {}[{}],", &*f.field_name, &*ident, &*cons),
+                            MutArray(ident, count)    => writeln!(structs, "    {}: [{}; {}],", &*f.field_name, &*ident, count),
+                            MutArrayEnum(ident, cons) => writeln!(structs, "    {}: [{}; {}],", &*f.field_name, &*ident, &*cons),
 
                             ConstArray(_, _)      |
                             ConstArrayEnum(_, _) => panic!("Unexpected const array in struct"),
@@ -597,6 +632,7 @@ impl GenTypes {
             }
         }
 
+        println!("{}", include_str!("prelude.rs"));
         println!("{}", &gen_types.structs);
         println!("{}", &gen_types.enums);
         println!("{}", &gen_types.bitmasks);
