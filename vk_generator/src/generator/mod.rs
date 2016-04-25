@@ -15,6 +15,7 @@ pub struct GenConfig<'a> {
     pub remove_bitmask_prefix: bool,
     pub snake_case_commands: bool,
     pub camel_case_enums: bool,
+    pub camel_case_members: bool,
 
     pub wrap_bitmasks: bool,
     pub use_libc_types: bool,
@@ -38,18 +39,13 @@ impl<'a> default::Default for GenConfig<'a> {
             remove_bitmask_prefix: true,
             snake_case_commands: true,
             camel_case_enums: true,
+            camel_case_members: true,
 
             wrap_bitmasks: true,
             use_libc_types: false,
             extern_type_overrides: &[]
         }
     }
-}
-
-fn process_member_name(name: *const str) -> *const str {
-    if "type" == unsafe{ &*name } {
-        "typ"
-    } else {name}
 }
 
 struct GenPreproc<'a, 'b> {
@@ -135,42 +131,72 @@ impl<'a, 'b> GenPreproc<'a, 'b> {
         }
     }
 
-    fn add_type_recurse(&mut self, type_iterator: &mut Iterator<Item=&mut VkElType>) {
-        for typ in type_iterator {
-            use registry::VkType::*;
+    fn add_type_recurse(&mut self, typ: &mut VkElType) {
+        use registry::VkType::*;
 
-            if let Some(type_ptr) = typ.type_ptr() {
-                typ.set_type(self.process_type_ident(type_ptr));
-                let type_ptr = unsafe{ &*type_ptr };
-                match *typ {
-                    VkElType::ConstArrayEnum(_, c) |
-                    VkElType::MutArrayEnum(_, c)  => self.const_types.insert(unsafe{ &*c }, ConstType::USize),
-                    _ => None
-                };
+        if let Some(type_ptr) = typ.type_ptr() {
+            typ.set_type(self.process_type_ident(type_ptr));
+            let type_ptr = unsafe{ &*type_ptr };
+            match *typ {
+                VkElType::ConstArrayEnum(_, c) |
+                VkElType::MutArrayEnum(_, c)  => self.const_types.insert(unsafe{ &*c }, ConstType::USize),
+                _ => None
+            };
 
-                if let Some(t) = self.add_type(type_ptr) {
-                    unsafe {
-                        match *t {
-                            Struct{fields: ref mut members, ..} |
-                            Union{variants: ref mut members, ..} => 
-                                self.add_type_recurse(&mut members.into_iter().map(
-                                    |m| {
-                                        m.field_name = process_member_name(m.field_name);
-                                        &mut m.field_type
-                                    })),
-                            TypeDef{..} => 
-                                if let TypeDef{typ, requires, ..} = *self.registry.types().get(type_ptr).unwrap() {
-                                    self.add_type(&*typ);
-                                    if let Some(requires) = to_option(requires) {
-                                        self.add_type(requires);
-                                    }
-                                } else {panic!("Registry type does not match up with modified type")},
-                            _ => ()
-                        }
+            if let Some(t) = self.add_type(type_ptr) {
+                unsafe {
+                    let mut custom_impl = false;
+
+                    match *t {
+                        Struct{fields: ref mut members, ..} |
+                        Union{variants: ref mut members, ..} =>
+                            for m in members.iter_mut() {
+                                m.field_name = self.process_member_name(m.field_name);
+                                match m.field_type {
+                                    VkElType::ConstArray(_, _)     |
+                                    VkElType::MutArray(_, _)       |
+                                    VkElType::ConstArrayEnum(_, _) |
+                                    VkElType::MutArrayEnum(_, _)  => custom_impl = true,
+                                    _ => ()
+                                };
+
+                                self.add_type_recurse(&mut m.field_type);
+                            },
+                        TypeDef{..} => 
+                            if let TypeDef{typ, requires, ..} = *self.registry.types().get(type_ptr).unwrap() {
+                                self.add_type(&*typ);
+                                if let Some(requires) = to_option(requires) {
+                                    self.add_type(requires);
+                                }
+                            } else {panic!("Registry type does not match up with modified type")},
+                        _ => ()
+                    }
+
+                    if custom_impl {
+                        self.custom_impls.insert(&*(*t).name().unwrap());
                     }
                 }
             }
         }
+    }
+
+    fn process_member_name(&mut self, name: *const str) -> *const str {
+        let mut name = unsafe{ &*name };
+
+        if self.config.camel_case_members { unsafe {
+            name = &*self.append_char_func(|s|
+                for c in name.chars() {
+                    if c.is_uppercase() {
+                        s.push('_')
+                    }
+                    s.push(c.to_lowercase().next().unwrap());
+                }
+            );
+        }}
+
+        if "type" == name {
+            "typ"
+        } else {name}
     }
 
     fn add_type(&mut self, name: &'a str) -> Option<*mut VkType> {
