@@ -2,7 +2,6 @@ extern crate vk_generator;
 extern crate vk_api;
 
 use std::fs::File;
-use std::io::Write;
 
 use vk_generator::registry::VkVersion;
 

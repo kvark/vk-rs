@@ -554,7 +554,16 @@ impl GenTypes {
                 // What they do have, however, is an approved RFC that is currently being implemented. Until those  |
                 // become reality the unions currently present in Vulkan are simply going to be hard-coded into the |
                 // generator with a fairly shitty, although functional, implementation.                             |
-                Union{..} => (),
+                Union{name, ref variants} => unsafe {
+                    let unions = &mut gen_types.unions;
+                    if (&*name).contains("ClearColorValue") {
+                        writeln!(unions, include_str!("./hardcoded/union_ClearColorValue.rs"), &*name)
+                    } else if (&*name).contains("ClearValue") {
+                        writeln!(unions, include_str!("./hardcoded/union_ClearValue.rs"), &*name,
+                                                                                          &*variants[0].field_type.type_ptr().unwrap(),
+                                                                                          &*variants[1].field_type.type_ptr().unwrap())
+                    } else {panic!("Unexpected Union")}.unwrap()
+                },
 
                 Enum{name, ref variants} => {
                     let enums = &mut gen_types.enums;
@@ -816,6 +825,7 @@ impl<'a> VkRegistry<'a> {
         writeln!(write, "{}", &gen_types.consts).unwrap();
         writeln!(write, "{}", &gen_types.externs).unwrap();
         writeln!(write, "{}", &gen_types.funcpointers).unwrap();
+        writeln!(write, "{}", &gen_types.unions).unwrap();
     }
 }
 
