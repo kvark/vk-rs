@@ -1,6 +1,6 @@
 use to_option;
 use registry::*;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::iter::Iterator;
 use std::default;
 use std::fmt::Write;
@@ -52,6 +52,10 @@ struct GenPreproc<'a, 'b> {
     types: HashMap<&'a str, VkType>,
     type_ord: Vec<&'a str>,
     const_types: HashMap<&'a str, ConstType>,
+    /// A set of all types that can't have Debug and Clone implementations derived. This occurs when
+    /// the type contains an array, and as such can't derive Clone (because arrays only implement Clone
+    /// if the types they contain are Copy, which all of the generated types aren't) and Debug.
+    custom_impls: HashSet<&'a str>,
     commands: Vec<VkCommand>,
     registry: &'a VkRegistry<'a>,
     config: GenConfig<'b>,
@@ -65,6 +69,7 @@ impl<'a, 'b> GenPreproc<'a, 'b> {
             types: HashMap::with_capacity(registry.types().len()),
             type_ord: Vec::with_capacity(registry.types().len()),
             const_types: HashMap::with_capacity(registry.core_consts().len()),
+            custom_impls: HashSet::with_capacity(32),
             commands: Vec::with_capacity(registry.commands().len()),
             registry: registry,
             config: config,
@@ -96,15 +101,19 @@ impl<'a, 'b> GenPreproc<'a, 'b> {
                 let name = unsafe{ &*name };
                 let mut command = self.registry.commands().get(name).unwrap().clone();
 
-                self.add_type_recurse(&mut (&mut command.params).into_iter().map(|p| &mut p.typ).chain(Some(&mut command.ret)));
+                for p in command.params.iter_mut() {
+                    self.add_type_recurse(&mut p.typ);
+                }
+                self.add_type_recurse(&mut command.ret);
+
                 self.add_command(command);
             },
 
-            Type{name, ..}      |
-            ApiConst{name, ..} => {
+            ApiConst{name, ..} => {self.add_type(unsafe{ &*name });},
+            Type{name, ..}     => {
                 let name = unsafe{ &*name };
                 if name != "vk_platform" {
-                    self.add_type(name);
+                    self.add_type_recurse(&mut VkElType::Var(name));
                 }
             },
 
@@ -184,14 +193,16 @@ impl<'a, 'b> GenPreproc<'a, 'b> {
         let mut name = unsafe{ &*name };
 
         if self.config.camel_case_members { unsafe {
-            name = &*self.append_char_func(|s|
+            name = &*self.append_char_func(|s| {
+                let mut cl = ' ';
                 for c in name.chars() {
-                    if c.is_uppercase() {
+                    if cl.is_lowercase() && c.is_uppercase() {
                         s.push('_')
                     }
                     s.push(c.to_lowercase().next().unwrap());
+                    cl = c;
                 }
-            );
+            });
         }}
 
         if "type" == name {
@@ -442,38 +453,77 @@ impl GenTypes {
 
             match *t {
                 Struct{name, ref fields} => {
+                    let name = unsafe{ &*name };
                     let structs = &mut gen_types.structs;
-                    writeln!(structs, "#[repr(C)]\n#[derive(Debug, Clone)]\npub struct {} {{", unsafe{ &*name }).unwrap();
+
+                    if !processed.custom_impls.contains(name) {
+                        writeln!(structs, "#[derive(Debug, Clone)]").unwrap();
+                    }
+                    writeln!(structs, "#[repr(C)]\npub struct {} {{", name).unwrap();
 
                     for f in fields { unsafe {
+                        write!(structs, "    pub ").unwrap();
                         match f.field_type {
-                            Var(ident) => writeln!(structs, "    {}: {},", &*f.field_name, &*ident),
+                            Var(ident) => writeln!(structs, "{}: {},", &*f.field_name, &*ident),
                             ConstPtr(ident, count) => {
-                                write!(structs, "    {}: ", &*f.field_name).unwrap();
+                                write!(structs, "{}: ", &*f.field_name).unwrap();
                                 for _ in 0..count {
                                     write!(structs, "*const ").unwrap();
                                 }
                                 writeln!(structs, "{},", &*ident)
                             }
                             MutPtr(ident, count) => {
-                                write!(structs, "    {}: ", &*f.field_name).unwrap();
+                                write!(structs, "{}: ", &*f.field_name).unwrap();
                                 for _ in 0..count {
                                     write!(structs, "*mut ").unwrap();
                                 }
                                 writeln!(structs, "{},", &*ident)
                             }
-                            MutArray(ident, count)    => writeln!(structs, "    {}: [{}; {}],", &*f.field_name, &*ident, count),
-                            MutArrayEnum(ident, cons) => writeln!(structs, "    {}: [{}; {}],", &*f.field_name, &*ident, &*cons),
+                            MutArray(ident, count)    => writeln!(structs, "{}: [{}; {}],", &*f.field_name, &*ident, count),
+                            MutArrayEnum(ident, cons) => writeln!(structs, "{}: [{}; {}],", &*f.field_name, &*ident, &*cons),
 
                             ConstArray(_, _)      |
                             ConstArrayEnum(_, _) => panic!("Unexpected const array in struct"),
-                            Const(_)             => panic!("Unexpected const {}", &*name),
+                            Const(_)             => panic!("Unexpected const {}", name),
                             Void                 => panic!("Unexpected void"),
                             Unknown              => panic!("Unexpected unknown")
                         }.unwrap();
                     }}
-
                     structs.push_str("}\n\n");
+
+                    if processed.custom_impls.contains(name) {
+                        // Write `Clone` implementation
+                        writeln!(structs, include_str!("custom_impl_clone.rs"), name).unwrap();
+                        for f in fields {unsafe{
+                            write!(structs, "            ").unwrap();
+                            let n = &*f.field_name;
+
+                            match f.field_type {
+                                MutArray(_, s)        |
+                                ConstArray(_, s)     => writeln!(structs, include_str!("clone_array.rs"), n, s),
+                                MutArrayEnum(_, s)    |
+                                ConstArrayEnum(_, s) => writeln!(structs, include_str!("clone_array.rs"), n, &*s),
+                                _                    => writeln!(structs, "{0}: self.{0}.clone(),", n)
+                            }.unwrap()
+                        }}
+                        write!(structs, "        }}\n    }}\n}}\n\n").unwrap();
+
+                        // Write `Debug` implementation
+                        writeln!(structs, include_str!("custom_impl_debug.rs"), name).unwrap();
+                        for f in fields {unsafe{
+                            write!(structs, "           ").unwrap();
+                            let n = &* f.field_name;
+
+                            match f.field_type {
+                                MutArray(_, _)        |
+                                ConstArray(_, _)      |
+                                MutArrayEnum(_, _)    |
+                                ConstArrayEnum(_, _) => writeln!(structs, ".field(\"{0}\", &&self.{0}[..])", n).unwrap(),
+                                _                    => writeln!(structs, ".field(\"{0}\", &self.{0})", n).unwrap()
+                            }
+                        }}
+                        write!(structs, "            .finish()\n    }}\n}}\n\n").unwrap();
+                    }
                 }
 
                 // Unions are currently a pain in the ass to do, as Rust does not have a stable implementation.     |
