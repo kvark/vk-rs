@@ -229,7 +229,7 @@ pub fn crawl<R: Read>(xml_events: Events<R>, registry: &mut VkRegistry) {
                         // In the registry, some of the tags contain characters which need to be processed. That happens    |
                         // here. Each Characters branch is specific to a certain block type, and what block we're in is     |
                         // stored in the `cur_block` variable.                                                              |
-                        Characters{ref chars, tags: (tag, _)}
+                        Characters{ref chars, tags: (tag, tag1)}
                             if VkBlock::Types == cur_block && 
                                "usage" != tag => {
                             let chars = &chars[..];
@@ -295,10 +295,61 @@ pub fn crawl<R: Read>(xml_events: Events<R>, registry: &mut VkRegistry) {
                                         "type" => (),
                                         _      => panic!("Unexpected define tag")
                                     },
-                                VkType::FuncPointer{ref mut name} =>
+                                VkType::FuncPointer{ref mut name, ref mut ret, ref mut params} =>
                                     match tag {
                                         "name" => *name = registry.append_str(chars),
-                                        "type" => (),
+                                        "type" => 
+                                            if let Some("type") = tag1 {
+                                                params.push(VkElType::Var(registry.append_str(chars)))
+                                            } else if let Some("types") = tag1 {
+                                                if let Some(p) = params.last_mut() {
+                                                    if chars.contains("const") {
+                                                        p.make_const();
+                                                    } else {
+                                                        let mut ptr_count = 0;
+                                                        // Indicies of array size slice
+                                                        let mut indices = (0, 0);
+                                                        for (b, c) in chars.char_indices() {
+                                                            match c {
+                                                                '*' => ptr_count += 1,
+                                                                '[' => indices.0 = b,
+                                                                ']' => indices.1 = b+1,
+                                                                _   => ()
+                                                            }
+                                                        }
+
+                                                        if 0 < ptr_count {
+                                                            p.make_ptr(ptr_count)
+                                                        } else if (0, 0) != indices {
+                                                            p.make_array(parse_array_index(&chars[indices.0..indices.1]).unwrap().0)
+                                                        }
+                                                    }
+                                                } else {
+                                                    // The type starts 8 chars into the funcpointer, after `typedef`
+                                                    let start = 8;
+                                                    if let Some(end) = chars.find(" (VKAPI_PTR") {
+                                                        let mut new_end = end;
+                                                        let mut ptr_count = 0;
+                                                        for (b, c) in chars[..end].char_indices() {
+                                                            if '*' == c {
+                                                                ptr_count += 1;
+                                                                if new_end == end {
+                                                                    new_end = b;
+                                                                }
+                                                            }
+                                                        }
+
+                                                        // If the type is *just* void (NOT a void pointer)
+                                                        if "void" == &chars[start..end] {
+                                                            ret.make_void()
+                                                        } else if 0 != ptr_count {
+                                                            *ret = VkElType::MutPtr(registry.append_str(&chars[start..new_end]), ptr_count)
+                                                        } else {
+                                                            *ret = VkElType::Var(registry.append_str(&chars[start..end]))
+                                                        }
+                                                    }
+                                                }
+                                            },
                                         _      => panic!("Unexpected define tag")
                                     },
                                 _ => ()
@@ -414,10 +465,10 @@ pub fn crawl<R: Read>(xml_events: Events<R>, registry: &mut VkRegistry) {
     //                 println!("API Const: {} {}", &*name, &*value),
 
     //             VkType::Define{name}      => println!("Define {:?}", &*name),
-    //             VkType::FuncPointer{name} => println!("FuncPointer {:?}", &*name),
+    //             VkType::FuncPointer{name, ref params} => println!("FuncPointer {:?} {:?}", &*name, params),
     //             VkType::ExternType{name, requires}  => println!("ExternType {:?} {:?}", &*name, &*requires),
 
-    //             VkType::Unhandled => ()
+    //             _ => ()
     //         }
     //     }
 

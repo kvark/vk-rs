@@ -121,7 +121,7 @@ impl<'a> GenRegistry for VkRegistry<'a> {
 
 /// The type of a Vulkan element (struct members, union variants, function parameters, etc.) and
 /// any associated data.
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq)]
 pub enum VkElType {
     /// A standard, singular, owned field
     Var(*const str),
@@ -436,13 +436,15 @@ pub enum VkType {
         value: *const str
     },
 
-    /// Defines are hardcoded into the generator, as procedurally generating them would be hard as fuck
+    // Defines are hardcoded into the generator, as procedurally generating them would be hard as hell
     Define {
         name: *const str
     },
-    /// Same goes for function pointers
+
     FuncPointer {
-        name: *const str
+        name: *const str,
+        ret: VkElType,
+        params: Vec<VkElType>
     },
 
     ExternType {
@@ -555,7 +557,9 @@ impl VkType {
 
     pub fn empty_funcpointer() -> VkType {
         VkType::FuncPointer {
-            name: null_str()
+            name: null_str(),
+            ret: VkElType::Unknown,
+            params: Vec::with_capacity(4)
         }
     }
 

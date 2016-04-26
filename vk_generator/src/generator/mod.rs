@@ -3,7 +3,8 @@ use registry::*;
 use std::collections::{HashMap, HashSet};
 use std::iter::Iterator;
 use std::default;
-use std::fmt::Write;
+use std::fmt::Write as WriteFmt;
+use std::io::Write as WriteIo;
 
 use boolinator::Boolinator;
 
@@ -169,8 +170,18 @@ impl<'a, 'b> GenPreproc<'a, 'b> {
                                     _ => ()
                                 };
 
+                                if let FuncPointer{..} = *self.registry.types().get(&*m.field_type.type_ptr().unwrap()).unwrap() {
+                                    custom_impl = true;
+                                }
+
                                 self.add_type_recurse(&mut m.field_type);
                             },
+                        FuncPointer{ref mut params, ref mut ret, ..} => {
+                            for p in params.iter_mut() {
+                                self.add_type_recurse(p)
+                            }
+                            self.add_type_recurse(ret)
+                        },
                         TypeDef{..} => 
                             if let TypeDef{typ, requires, ..} = *self.registry.types().get(type_ptr).unwrap() {
                                 self.add_type(&*typ);
@@ -423,27 +434,29 @@ impl<'a, 'b> GenPreproc<'a, 'b> {
 }
 
 struct GenTypes {
-    structs:  String,
-    unions:   String,
-    enums:    String,
-    bitmasks: String,
-    handles:  String,
-    typedefs: String,
-    consts:   String,
-    externs:  String
+    structs:      String,
+    unions:       String,
+    enums:        String,
+    bitmasks:     String,
+    handles:      String,
+    typedefs:     String,
+    funcpointers: String,
+    consts:       String,
+    externs:      String
 }
 
 impl GenTypes {
     fn new(processed: &GenPreproc) -> GenTypes {
         let mut gen_types = GenTypes {
-            structs:  String::with_capacity(2usize.pow(17)),
-            unions:   String::with_capacity(2usize.pow(13)),//take that you superstitious bastards 
-            enums:    String::with_capacity(2usize.pow(15)),
-            bitmasks: String::with_capacity(2usize.pow(15)),
-            handles:  String::with_capacity(2usize.pow(12)),
-            typedefs: String::with_capacity(2usize.pow(13)),
-            consts:   String::with_capacity(2usize.pow(10)),
-            externs:  String::with_capacity(2usize.pow(10))
+            structs:      String::with_capacity(2usize.pow(17)),
+            unions:       String::with_capacity(2usize.pow(13)),//take that you superstitious bastards 
+            enums:        String::with_capacity(2usize.pow(15)),
+            bitmasks:     String::with_capacity(2usize.pow(15)),
+            handles:      String::with_capacity(2usize.pow(12)),
+            typedefs:     String::with_capacity(2usize.pow(13)),
+            funcpointers: String::with_capacity(2usize.pow(11)),
+            consts:       String::with_capacity(2usize.pow(10)),
+            externs:      String::with_capacity(2usize.pow(10))
         };
 
         for t in processed.type_ord.iter().map(|k| processed.types.get(k).unwrap()) {
@@ -498,13 +511,20 @@ impl GenTypes {
                             write!(structs, "            ").unwrap();
                             let n = &*f.field_name;
 
-                            match f.field_type {
-                                MutArray(_, s)        |
-                                ConstArray(_, s)     => writeln!(structs, include_str!("clone_array.rs"), n, s),
-                                MutArrayEnum(_, s)    |
-                                ConstArrayEnum(_, s) => writeln!(structs, include_str!("clone_array.rs"), n, &*s),
-                                _                    => writeln!(structs, "{0}: self.{0}.clone(),", n)
-                            }.unwrap()
+                            // For some reason, extern "system" functions implement `Copy` and not `Clone`. Because of that, we have
+                            // to make an exception in the custom Clone implementation so that these functions are *copied*, not
+                            // cloned. Also, we can used the "processed" type because function pointer types don't get processed
+                            if let Some(&FuncPointer{..}) = processed.registry.types().get(&*f.field_type.type_ptr().unwrap()) {
+                                writeln!(structs, "{0}: self.{0},", n).unwrap();
+                            } else {
+                                match f.field_type {
+                                    MutArray(_, s)        |
+                                    ConstArray(_, s)     => writeln!(structs, include_str!("clone_array.rs"), n, s),
+                                    MutArrayEnum(_, s)    |
+                                    ConstArrayEnum(_, s) => writeln!(structs, include_str!("clone_array.rs"), n, &*s),
+                                    _                    => writeln!(structs, "{0}: self.{0}.clone(),", n)
+                                }.unwrap()
+                            }
                         }}
                         write!(structs, "        }}\n    }}\n}}\n\n").unwrap();
 
@@ -514,12 +534,16 @@ impl GenTypes {
                             write!(structs, "           ").unwrap();
                             let n = &* f.field_name;
 
-                            match f.field_type {
-                                MutArray(_, _)        |
-                                ConstArray(_, _)      |
-                                MutArrayEnum(_, _)    |
-                                ConstArrayEnum(_, _) => writeln!(structs, ".field(\"{0}\", &&self.{0}[..])", n).unwrap(),
-                                _                    => writeln!(structs, ".field(\"{0}\", &self.{0})", n).unwrap()
+                            if let Some(&FuncPointer{..}) = processed.registry.types().get(&*f.field_type.type_ptr().unwrap()) {
+                                writeln!(structs, ".field(\"{0}\", &(self.{0} as *const ()))", n).unwrap();
+                            } else {
+                                match f.field_type {
+                                    MutArray(_, _)        |
+                                    ConstArray(_, _)      |
+                                    MutArrayEnum(_, _)    |
+                                    ConstArrayEnum(_, _) => writeln!(structs, ".field(\"{0}\", &&self.{0}[..])", n).unwrap(),
+                                    _                    => writeln!(structs, ".field(\"{0}\", &self.{0})", n).unwrap()
+                                }
                             }
                         }}
                         write!(structs, "            .finish()\n    }}\n}}\n\n").unwrap();
@@ -704,18 +728,61 @@ impl GenTypes {
                         writeln!(externs, "pub type {} = *const ();", name).unwrap();
                     }
                 }
+
+                FuncPointer{name, ref ret, ref params} => {
+                    let funcpointers = &mut gen_types.funcpointers;
+                    writeln!(funcpointers, "pub type {} = unsafe extern \"system\" fn(", unsafe{ &*name }).unwrap();
+                    for p in params.iter() {unsafe{
+                        write!(funcpointers, "    ").unwrap();
+                        match *p {
+                            Var(ident) => writeln!(funcpointers, "{},", &*ident),
+                            ConstPtr(ident, count) => {
+                                for _ in 0..count {
+                                    write!(funcpointers, "*const ").unwrap();
+                                }
+                                writeln!(funcpointers, "{},", &*ident)
+                            }
+                            MutPtr(ident, count) => {
+                                for _ in 0..count {
+                                    write!(funcpointers, "*mut ").unwrap();
+                                }
+                                writeln!(funcpointers, "{},", &*ident)
+                            }
+                            ConstArray(ident, size) => writeln!(funcpointers, "*const [{}; {}],", &*ident, size),
+                            MutArray(ident, size)   => writeln!(funcpointers, "*mut [{}; {}],", &*ident, size),
+                            ConstArrayEnum(ident, size) => writeln!(funcpointers, "*const [{}; {}],", &*ident, &*size),
+                            MutArrayEnum(ident, size)   => writeln!(funcpointers, "*mut [{}; {}],", &*ident, &*size),
+                            Const(_) => panic!("Unexpected raw const"),
+                            Void     => panic!("Unexpected void"),
+                            Unknown  => panic!("Unexpected Unknown")
+                        }.unwrap()
+                    }}
+
+                    if Void == *ret {
+                        writeln!(funcpointers, ");\n").unwrap();
+                    } else {
+                        write!(funcpointers, ") -> ").unwrap();
+                        match *ret {
+                            ConstPtr(ident, count) => {
+                                for _ in 0..count {
+                                    write!(funcpointers, "*const ").unwrap();
+                                }
+                                writeln!(funcpointers, "{};\n", unsafe{ &*ident })
+                            }
+                            MutPtr(ident, count) => {
+                                for _ in 0..count {
+                                    write!(funcpointers, "*mut ").unwrap();
+                                }
+                                writeln!(funcpointers, "{};\n", unsafe{ &*ident })
+                            }
+                            _ => writeln!(funcpointers, "{};\n", unsafe{ &*ret.type_ptr().unwrap() })
+                        }.unwrap()
+                    }
+                }
                 _ => ()
             }
         }
 
-        println!("{}", include_str!("prelude.rs"));
-        println!("{}", &gen_types.structs);
-        println!("{}", &gen_types.enums);
-        println!("{}", &gen_types.bitmasks);
-        println!("{}", &gen_types.handles);
-        println!("{}", &gen_types.typedefs);
-        println!("{}", &gen_types.consts);
-        println!("{}", &gen_types.externs);
         gen_types
     }
 }
@@ -736,57 +803,19 @@ enum ConstType {
 
 
 impl<'a> VkRegistry<'a> {
-    pub fn gen_global(&self, version: VkVersion, extensions: &[&str], config: GenConfig) {
+    pub fn gen_global<W: WriteIo>(&self, write: &mut W, version: VkVersion, extensions: &[&str], config: GenConfig) {
         let generator = GenPreproc::new(self, version, extensions, config);
-        GenTypes::new(&generator);
+        let gen_types = GenTypes::new(&generator);
 
-        // for typ in generator.type_ord.iter().map(|k| generator.types.get(k).unwrap()) {
-        //     unsafe{
-        //         match *typ {
-        //             VkType::Struct{name, ..}  => {
-        //                 println!("Struct {:?}", &*name);
-        //             }
-
-        //             VkType::Union{name, ..} => {
-        //                 println!("Union {:?}", &*name);
-        //             }
-
-        //             VkType::Enum{name, ..} => {
-        //                 println!("Enum {:?}", &*name);
-        //             }
-
-        //             VkType::TypeDef{typ, name, requires, validity} =>
-        //                 if validity != 0 {
-        //                     panic!("Invalid typedef")
-        //                 } else {
-        //                     println!("TypeDef {:?} {:?} {:?}", &*typ, &*name, to_option(requires))
-        //                 },
-
-        //             VkType::Handle{name, validity, dispatchable} =>
-        //                 if !validity {
-        //                     panic!("Invalid handle")
-        //                 } else if dispatchable {
-        //                     println!("Handle {:?}", &*name)
-        //                 } else {
-        //                     println!("Non-Dispatchable Handle {:?}", &*name)
-        //                 },
-
-        //             VkType::ApiConst{name, value} =>
-        //                 println!("API Const: {} {}", &*name, &*value),
-
-        //             VkType::Define{name}      => println!("Define {:?}", &*name),
-        //             VkType::FuncPointer{name} => println!("FuncPointer {:?}", &*name),
-        //             VkType::ExternType{name, requires}  => println!("ExternType {:?} {:?}", &*name, &*requires),
-
-        //             VkType::Unhandled => ()
-        //         }
-        //     }
-        // }
-        // println!("{}", generator.types.len());
-
-        // for command in generator.commands {
-        //     println!("{:#?}", command);
-        // }
+        writeln!(write, "{}", include_str!("prelude.rs")).unwrap();
+        writeln!(write, "{}", &gen_types.structs).unwrap();
+        writeln!(write, "{}", &gen_types.enums).unwrap();
+        writeln!(write, "{}", &gen_types.bitmasks).unwrap();
+        writeln!(write, "{}", &gen_types.handles).unwrap();
+        writeln!(write, "{}", &gen_types.typedefs).unwrap();
+        writeln!(write, "{}", &gen_types.consts).unwrap();
+        writeln!(write, "{}", &gen_types.externs).unwrap();
+        writeln!(write, "{}", &gen_types.funcpointers).unwrap();
     }
 }
 
