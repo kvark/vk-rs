@@ -854,14 +854,12 @@ impl<'a> VkRegistry<'a> {
             writeln!(write, "}}\n").unwrap();
         }}
 
-        writeln!(write, "pub fn load_with<F: FnMut(&str) -> *const ()>(mut load_fn: F) {{unsafe{{").unwrap();
-        writeln!(write, "    use std::{{mem, ptr}}; let mut fn_buf: *const ();").unwrap();
+        writeln!(write, "pub fn load_with<F: FnMut(&str) -> *const ()>(mut load_fn: F) -> Result<(), Vec<&'static str>> {{unsafe{{").unwrap();
+        writeln!(write, "    use std::{{mem, ptr}}; let mut fn_buf: *const (); let mut unloaded_fns = Vec::new();").unwrap();
         for c in preproc.commands.iter() {unsafe{
-            writeln!(write, "    fn_buf = load_fn({0}::RAW_NAME);", &*c.name).unwrap();
-            writeln!(write, "    if ptr::null() != fn_buf {{").unwrap();
-            writeln!(write, "        {0}::fn_ptr = mem::transmute(fn_buf); }}", &*c.name).unwrap();
+            writeln!(write, include_str!("load_fn.rs"), &*c.name).unwrap();
         }}
-        writeln!(write, "}}}}").unwrap();
+        writeln!(write, "    if 0 == unloaded_fns.len() {{Ok(())}} else {{Err(unloaded_fns)}}\n}}}}").unwrap();
     }
 }
 
