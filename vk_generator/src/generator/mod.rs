@@ -17,6 +17,7 @@ pub struct GenConfig<'a> {
     pub snake_case_commands: bool,
     pub camel_case_enums: bool,
     pub camel_case_members: bool,
+    pub debug_c_strings: bool,
 
     pub wrap_bitmasks: bool,
     pub use_libc_types: bool,
@@ -41,6 +42,7 @@ impl<'a> default::Default for GenConfig<'a> {
             snake_case_commands: true,
             camel_case_enums: true,
             camel_case_members: true,
+            debug_c_strings: true,
 
             wrap_bitmasks: true,
             use_libc_types: false,
@@ -571,12 +573,15 @@ impl GenTypes {
                                 writeln!(structs, ".field(\"{0}\", &(self.{0} as *const ()))", n).unwrap();
                             } else {
                                 match f.field_type {
-                                    MutArray(_, _)        |
-                                    ConstArray(_, _)      |
-                                    MutArrayEnum(_, _)    |
-                                    ConstArrayEnum(_, _) => writeln!(structs, ".field(\"{0}\", &&self.{0}[..])", n).unwrap(),
-                                    _                    => writeln!(structs, ".field(\"{0}\", &self.{0})", n).unwrap()
-                                }
+                                    MutArray(t, _)        |
+                                    ConstArray(t, _)      |
+                                    MutArrayEnum(t, _)    |
+                                    ConstArrayEnum(t, _) => 
+                                        if processed.config.debug_c_strings && "c_char" == &*t {
+                                            writeln!(structs, ".field(\"{0}\", &unsafe{{ CStr::from_ptr(&self.{0}[0]) }})", n)
+                                        } else {writeln!(structs, ".field(\"{0}\", &&self.{0}[..])", n)},
+                                    _                    => writeln!(structs, ".field(\"{0}\", &self.{0})", n)
+                                }.unwrap()
                             }
                         }}
                         write!(structs, "            .finish()\n    }}\n}}\n\n").unwrap();
@@ -810,7 +815,7 @@ impl GenTypes {
         writeln!(write, "{}", include_str!("defines.rs")).unwrap();
         writeln!(write, "pub mod types {{").unwrap();
         writeln!(write, "#![allow(non_camel_case_types)]").unwrap();
-        writeln!(write, "use std::fmt; use std::ops::*; use super::*;").unwrap();
+        writeln!(write, "use std::fmt; use std::ops::*; use std::ffi::CStr; use super::*;").unwrap();
         writeln!(write, "{}", &self.externs).unwrap();
         writeln!(write, "{}", &self.typedefs).unwrap();
         writeln!(write, "{}", &self.consts).unwrap();
