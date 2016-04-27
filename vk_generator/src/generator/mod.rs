@@ -807,6 +807,7 @@ impl GenTypes {
     }
 
     fn write_types<W: WriteIo>(&self, write: &mut W) {
+        writeln!(write, "{}", include_str!("defines.rs")).unwrap();
         writeln!(write, "{}", &self.externs).unwrap();
         writeln!(write, "{}", &self.typedefs).unwrap();
         writeln!(write, "{}", &self.consts).unwrap();
