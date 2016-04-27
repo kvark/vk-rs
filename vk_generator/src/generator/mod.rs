@@ -619,8 +619,6 @@ impl GenTypes {
                     let flags_name = unsafe{ &*processed.types.get("VkFlags").unwrap().name().unwrap() };
 
                     if processed.config.wrap_bitmasks {
-                        writeln!(bitmasks, include_str!("bitmask_struct.rs"), name, flags_name).unwrap();
-
                         let mut all_bits = 0;
                         for v in variants {unsafe {
                             let bits = 
@@ -632,7 +630,7 @@ impl GenTypes {
                             all_bits |= bits;
                         }}
 
-                        writeln!(bitmasks, include_str!("bitmask_impl.rs"), name, all_bits, flags_name).unwrap();
+                        writeln!(bitmasks, "vk_bitflags_wrapped!({}, 0b{:b}, {});\n", name, all_bits, flags_name).unwrap();
                     } else {
                         writeln!(bitmasks, "pub type {} = {};", name, flags_name).unwrap();
 
@@ -654,7 +652,7 @@ impl GenTypes {
                     if dispatchable {
                         writeln!(handles, include_str!("handle_dispatchable.rs"), name).unwrap();
                     } else {
-                        writeln!(handles, include_str!("handle_nondispatchable.rs"), name).unwrap();
+                        writeln!(handles, "handle_nondispatchable!({});", name).unwrap();
                     }
                 }
 
@@ -809,15 +807,15 @@ impl GenTypes {
     }
 
     fn write_types<W: WriteIo>(&self, write: &mut W) {
-        writeln!(write, "{}", &self.structs).unwrap();
-        writeln!(write, "{}", &self.enums).unwrap();
-        writeln!(write, "{}", &self.bitmasks).unwrap();
-        writeln!(write, "{}", &self.handles).unwrap();
+        writeln!(write, "{}", &self.externs).unwrap();
         writeln!(write, "{}", &self.typedefs).unwrap();
         writeln!(write, "{}", &self.consts).unwrap();
-        writeln!(write, "{}", &self.externs).unwrap();
-        writeln!(write, "{}", &self.funcpointers).unwrap();
+        writeln!(write, "{}", &self.structs).unwrap();
         writeln!(write, "{}", &self.unions).unwrap();
+        writeln!(write, "{}", &self.enums).unwrap();
+        writeln!(write, "{}", &self.handles).unwrap();
+        writeln!(write, "{}", &self.bitmasks).unwrap();
+        writeln!(write, "{}", &self.funcpointers).unwrap();
     }
 }
 
@@ -844,37 +842,23 @@ impl<'a> VkRegistry<'a> {
 
         for (c, r) in preproc.commands.iter().zip(preproc.commands_raw.into_iter()) {unsafe{
             // Create module containing unprocessed name and function pointer
-            writeln!(write, include_str!("command_module.rs"), &*c.name, r).unwrap();
-            for p in c.params.iter() {
-                write!(write, "        ").unwrap();
-                gen_func_param!(write, &p.typ);
-                writeln!(write, ",").unwrap();
-            }
-
-            write!(write, "    ) -> ").unwrap();
-            gen_func_param!(write, &c.ret);
-            writeln!(write, "> = None;\n}}\n").unwrap();
-
-            // Create actual function
-            writeln!(write, "pub unsafe extern \"system\" fn {}(", &*c.name).unwrap();
+            writeln!(write, "vk_function!{{\"{}\", {}(", r, &*c.name).unwrap();
             for p in c.params.iter() {
                 write!(write, "        {}: ", &*p.name).unwrap();
                 gen_func_param!(write, &p.typ);
                 writeln!(write, ",").unwrap();
             }
-
             write!(write, "    ) -> ").unwrap();
             gen_func_param!(write, &c.ret);
-            writeln!(write, " {{\n    {0}::fn_ptr.expect(\"Attempted to execute fn {0} without function loaded\")(", &*c.name).unwrap();
-            for p in c.params.iter() {
-                writeln!(write, "        {},", &*p.name).unwrap();
-            }
-            writeln!(write, "    )\n}}").unwrap();
+            writeln!(write, "}}\n").unwrap();
         }}
 
-        writeln!(write, "pub fn load_with<F: FnMut(&str) -> *const c_void>(mut load_fn: F) {{unsafe{{use std::mem;").unwrap();
+        writeln!(write, "pub fn load_with<F: FnMut(&str) -> *const ()>(mut load_fn: F) {{unsafe{{").unwrap();
+        writeln!(write, "    use std::{{mem, ptr}}; let mut fn_buf: *const ();").unwrap();
         for c in preproc.commands.iter() {unsafe{
-            writeln!(write, "    {0}::fn_ptr = mem::transmute(load_fn({0}::RAW_NAME));", &*c.name).unwrap();
+            writeln!(write, "    fn_buf = load_fn({0}::RAW_NAME);", &*c.name).unwrap();
+            writeln!(write, "    if ptr::null() != fn_buf {{").unwrap();
+            writeln!(write, "        {0}::fn_ptr = mem::transmute(fn_buf); }}", &*c.name).unwrap();
         }}
         writeln!(write, "}}}}").unwrap();
     }
