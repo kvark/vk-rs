@@ -861,6 +861,27 @@ impl<'a> VkRegistry<'a> {
         }}
         writeln!(write, "    if 0 == unloaded_fns.len() {{Ok(())}} else {{Err(unloaded_fns)}}\n}}}}").unwrap();
     }
+
+    pub fn gen_struct<W: WriteIo>(&self, write: &mut W, version: VkVersion, extensions: &[&str], config: GenConfig) {
+        let preproc = GenPreproc::new(self, version, extensions, config);
+
+        writeln!(write, "{}", include_str!("prelude_struct_gen.rs")).unwrap();
+        GenTypes::new(&preproc).write_types(write);
+
+        writeln!(write, "vk_struct_bindings!{{").unwrap();
+        for (c, r) in preproc.commands.iter().zip(preproc.commands_raw.into_iter()) {unsafe{
+            writeln!(write, "    \"{}\", {}(", r, &*c.name).unwrap();
+            for p in c.params.iter() {
+                write!(write, "        {}: ", &*p.name).unwrap();
+                gen_func_param!(write, &p.typ);
+                writeln!(write, ",").unwrap();
+            }
+            write!(write, "    ) -> ").unwrap();
+            gen_func_param!(write, &c.ret);
+            writeln!(write, ";\n").unwrap();
+        }}
+        writeln!(write, "}}").unwrap();
+    }
 }
 
 pub trait GenRegistry {
