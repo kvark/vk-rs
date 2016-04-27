@@ -58,6 +58,8 @@ struct GenPreproc<'a, 'b> {
     /// if the types they contain are Copy, which all of the generated types aren't) and Debug.
     custom_impls: HashSet<&'a str>,
     commands: Vec<VkCommand>,
+    /// A vector of the unprocessed command names
+    commands_raw: Vec<&'a str>,
     registry: &'a VkRegistry<'a>,
     config: GenConfig<'b>,
     string_buffer: Option<String>
@@ -72,6 +74,7 @@ impl<'a, 'b> GenPreproc<'a, 'b> {
             const_types: HashMap::with_capacity(registry.core_consts().len()),
             custom_impls: HashSet::with_capacity(32),
             commands: Vec::with_capacity(registry.commands().len()),
+            commands_raw: Vec::with_capacity(registry.commands().len()),
             registry: registry,
             config: config,
         };
@@ -101,8 +104,10 @@ impl<'a, 'b> GenPreproc<'a, 'b> {
             Command{name, ..} => {
                 let name = unsafe{ &*name };
                 let mut command = self.registry.commands().get(name).unwrap().clone();
+                self.commands_raw.push(unsafe{ &*command.name });
 
                 for p in command.params.iter_mut() {
+                    p.name = self.process_member_name(p.name);
                     self.add_type_recurse(&mut p.typ);
                 }
                 self.add_type_recurse(&mut command.ret);
@@ -279,7 +284,7 @@ impl<'a, 'b> GenPreproc<'a, 'b> {
             _ => ()
         }
 
-        if self.config.remove_type_prefix {
+        if self.config.remove_type_prefix && "VkResult" != ident {
             if let Some(0) = ident.find("Vk") {
                 ident = &ident[2..];
             }
@@ -430,6 +435,34 @@ impl<'a, 'b> GenPreproc<'a, 'b> {
 
         let ptr = string_buffer.as_ptr().offset(prepushlen as isize);
         str::from_utf8_unchecked(slice::from_raw_parts(ptr, string_buffer.len()-prepushlen)) as *const str
+    }
+}
+
+
+macro_rules! gen_func_param {
+    ($write: expr, $el: expr) => {
+        match *$el {
+            VkElType::Var(ident) => write!($write, "{}", &*ident),
+            VkElType::ConstPtr(ident, count) => {
+                for _ in 0..count {
+                    write!($write, "*const ").unwrap();
+                }
+                write!($write, "{}", &*ident)
+            }
+            VkElType::MutPtr(ident, count) => {
+                for _ in 0..count {
+                    write!($write, "*mut ").unwrap();
+                }
+                write!($write, "{}", &*ident)
+            }
+            VkElType::ConstArray(ident, size) => write!($write, "*const [{}; {}]", &*ident, size),
+            VkElType::MutArray(ident, size)   => write!($write, "*mut [{}; {}]", &*ident, size),
+            VkElType::ConstArrayEnum(ident, size) => write!($write, "*const [{}; {}]", &*ident, &*size),
+            VkElType::MutArrayEnum(ident, size)   => write!($write, "*mut [{}; {}]", &*ident, &*size),
+            VkElType::Void     => write!($write, "()"),
+            VkElType::Const(_) => panic!("Unexpected raw const"),
+            VkElType::Unknown  => panic!("Unexpected Unknown")
+        }.unwrap()
     }
 }
 
@@ -743,28 +776,8 @@ impl GenTypes {
                     writeln!(funcpointers, "pub type {} = unsafe extern \"system\" fn(", unsafe{ &*name }).unwrap();
                     for p in params.iter() {unsafe{
                         write!(funcpointers, "    ").unwrap();
-                        match *p {
-                            Var(ident) => writeln!(funcpointers, "{},", &*ident),
-                            ConstPtr(ident, count) => {
-                                for _ in 0..count {
-                                    write!(funcpointers, "*const ").unwrap();
-                                }
-                                writeln!(funcpointers, "{},", &*ident)
-                            }
-                            MutPtr(ident, count) => {
-                                for _ in 0..count {
-                                    write!(funcpointers, "*mut ").unwrap();
-                                }
-                                writeln!(funcpointers, "{},", &*ident)
-                            }
-                            ConstArray(ident, size) => writeln!(funcpointers, "*const [{}; {}],", &*ident, size),
-                            MutArray(ident, size)   => writeln!(funcpointers, "*mut [{}; {}],", &*ident, size),
-                            ConstArrayEnum(ident, size) => writeln!(funcpointers, "*const [{}; {}],", &*ident, &*size),
-                            MutArrayEnum(ident, size)   => writeln!(funcpointers, "*mut [{}; {}],", &*ident, &*size),
-                            Const(_) => panic!("Unexpected raw const"),
-                            Void     => panic!("Unexpected void"),
-                            Unknown  => panic!("Unexpected Unknown")
-                        }.unwrap()
+                        gen_func_param!(funcpointers, p);
+                        funcpointers.push_str(",\n");
                     }}
 
                     if Void == *ret {
@@ -794,6 +807,18 @@ impl GenTypes {
 
         gen_types
     }
+
+    fn write_types<W: WriteIo>(&self, write: &mut W) {
+        writeln!(write, "{}", &self.structs).unwrap();
+        writeln!(write, "{}", &self.enums).unwrap();
+        writeln!(write, "{}", &self.bitmasks).unwrap();
+        writeln!(write, "{}", &self.handles).unwrap();
+        writeln!(write, "{}", &self.typedefs).unwrap();
+        writeln!(write, "{}", &self.consts).unwrap();
+        writeln!(write, "{}", &self.externs).unwrap();
+        writeln!(write, "{}", &self.funcpointers).unwrap();
+        writeln!(write, "{}", &self.unions).unwrap();
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -810,22 +835,48 @@ enum ConstType {
     Unknown
 }
 
-
 impl<'a> VkRegistry<'a> {
     pub fn gen_global<W: WriteIo>(&self, write: &mut W, version: VkVersion, extensions: &[&str], config: GenConfig) {
-        let generator = GenPreproc::new(self, version, extensions, config);
-        let gen_types = GenTypes::new(&generator);
+        let preproc = GenPreproc::new(self, version, extensions, config);
 
         writeln!(write, "{}", include_str!("prelude.rs")).unwrap();
-        writeln!(write, "{}", &gen_types.structs).unwrap();
-        writeln!(write, "{}", &gen_types.enums).unwrap();
-        writeln!(write, "{}", &gen_types.bitmasks).unwrap();
-        writeln!(write, "{}", &gen_types.handles).unwrap();
-        writeln!(write, "{}", &gen_types.typedefs).unwrap();
-        writeln!(write, "{}", &gen_types.consts).unwrap();
-        writeln!(write, "{}", &gen_types.externs).unwrap();
-        writeln!(write, "{}", &gen_types.funcpointers).unwrap();
-        writeln!(write, "{}", &gen_types.unions).unwrap();
+        GenTypes::new(&preproc).write_types(write);
+
+        for (c, r) in preproc.commands.iter().zip(preproc.commands_raw.into_iter()) {unsafe{
+            // Create module containing unprocessed name and function pointer
+            writeln!(write, include_str!("command_module.rs"), &*c.name, r).unwrap();
+            for p in c.params.iter() {
+                write!(write, "        ").unwrap();
+                gen_func_param!(write, &p.typ);
+                writeln!(write, ",").unwrap();
+            }
+
+            write!(write, "    ) -> ").unwrap();
+            gen_func_param!(write, &c.ret);
+            writeln!(write, "> = None;\n}}\n").unwrap();
+
+            // Create actual function
+            writeln!(write, "pub unsafe extern \"system\" fn {}(", &*c.name).unwrap();
+            for p in c.params.iter() {
+                write!(write, "        {}: ", &*p.name).unwrap();
+                gen_func_param!(write, &p.typ);
+                writeln!(write, ",").unwrap();
+            }
+
+            write!(write, "    ) -> ").unwrap();
+            gen_func_param!(write, &c.ret);
+            writeln!(write, " {{\n    {0}::fn_ptr.expect(\"Attempted to execute fn {0} without function loaded\")(", &*c.name).unwrap();
+            for p in c.params.iter() {
+                writeln!(write, "        {},", &*p.name).unwrap();
+            }
+            writeln!(write, "    )\n}}").unwrap();
+        }}
+
+        writeln!(write, "pub fn load_with<F: FnMut(&str) -> *const c_void>(mut load_fn: F) {{unsafe{{use std::mem;").unwrap();
+        for c in preproc.commands.iter() {unsafe{
+            writeln!(write, "    {0}::fn_ptr = mem::transmute(load_fn({0}::RAW_NAME));", &*c.name).unwrap();
+        }}
+        writeln!(write, "}}}}").unwrap();
     }
 }
 

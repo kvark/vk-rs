@@ -54,7 +54,11 @@ impl<'a> VkRegistry<'a> {
     }
 
     fn push_command(&mut self, vk_command: Option<VkCommand>) -> Result<(), ()> {
-        if let Some(cmd) = vk_command {
+        if let Some(mut cmd) = vk_command {
+            while VkElType::Unknown == cmd.params.last().unwrap().typ {
+                cmd.params.pop();
+            }
+
             unsafe{ self.commands.insert(&*cmd.name, cmd) };
             Ok(())
         } else {Err(())}
