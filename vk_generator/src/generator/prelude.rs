@@ -1,7 +1,5 @@
-#![allow(non_camel_case_types)]
-use std::fmt;
-use std::ops::*;
-pub type c_ulonglong = u64;
+use self::types::*;
+pub use std::os::raw::c_ulonglong;
 
 #[doc(hidden)]
 pub fn unloaded_function_panic() -> ! {
@@ -21,6 +19,7 @@ macro_rules! vk_functions {
 
             pub mod $name {
                 use super::*;
+                use super::types::*;
                 pub const RAW_NAME: &'static str = $raw_name;
                 pub static mut fn_ptr: *const () = unloaded_function_panic as *const ();
                 #[doc(hidden)]
@@ -41,7 +40,7 @@ macro_rules! vk_functions {
                 fn_buf = load_fn($raw_name);
                 if ptr::null() != fn_buf {
                     $name::fn_ptr = fn_buf;
-                } else {
+                } else if $name::fn_ptr != unloaded_function_panic as *const () {
                     unloaded_fns.push($raw_name)
                 }
             )+
@@ -62,13 +61,13 @@ macro_rules! handle_nondispatchable {
         pub struct $name (uint64_t);
 
         impl fmt::Pointer for $name {
-            fn fmt(&self, f: &mut fmt::Formatter) -> std::result::Result<(), fmt::Error> {
+            fn fmt(&self, f: &mut fmt::Formatter) -> ::std::result::Result<(), fmt::Error> {
                 write!(f, "0x{:x}", self.0)
             }
         }
 
         impl fmt::Debug for $name {
-            fn fmt(&self, f: &mut fmt::Formatter) -> std::result::Result<(), fmt::Error> {
+            fn fmt(&self, f: &mut fmt::Formatter) -> ::std::result::Result<(), fmt::Error> {
                 write!(f, "0x{:x}", self.0)
             }
         }

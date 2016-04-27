@@ -1,7 +1,4 @@
-#![allow(non_camel_case_types)]
-use std::fmt;
-use std::ops::*;
-pub type c_ulonglong = u64;
+pub use std::os::raw::c_ulonglong;
 
 #[doc(hidden)]
 pub fn unloaded_function_panic() -> ! {
@@ -52,7 +49,7 @@ macro_rules! vk_struct_bindings {
                     fn_buf = load_fn($raw_name);
                     if ptr::null() != fn_buf {
                         self.$name = FnPtr{ RAW_NAME: $raw_name, fn_ptr: fn_buf };
-                    } else {
+                    } else if $name::fn_ptr != unloaded_function_panic as *const () {
                         unloaded_fns.push($raw_name)
                     }
                 )+

@@ -808,6 +808,9 @@ impl GenTypes {
 
     fn write_types<W: WriteIo>(&self, write: &mut W) {
         writeln!(write, "{}", include_str!("defines.rs")).unwrap();
+        writeln!(write, "pub mod types {{").unwrap();
+        writeln!(write, "#![allow(non_camel_case_types)]").unwrap();
+        writeln!(write, "use std::fmt; use std::ops::*; use super::*;").unwrap();
         writeln!(write, "{}", &self.externs).unwrap();
         writeln!(write, "{}", &self.typedefs).unwrap();
         writeln!(write, "{}", &self.consts).unwrap();
@@ -817,6 +820,7 @@ impl GenTypes {
         writeln!(write, "{}", &self.handles).unwrap();
         writeln!(write, "{}", &self.bitmasks).unwrap();
         writeln!(write, "{}", &self.funcpointers).unwrap();
+        writeln!(write, "}}").unwrap();
     }
 }
 
