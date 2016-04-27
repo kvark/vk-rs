@@ -841,9 +841,9 @@ impl<'a> VkRegistry<'a> {
         writeln!(write, "{}", include_str!("prelude.rs")).unwrap();
         GenTypes::new(&preproc).write_types(write);
 
+        writeln!(write, "vk_functions!{{").unwrap();
         for (c, r) in preproc.commands.iter().zip(preproc.commands_raw.into_iter()) {unsafe{
-            // Create module containing unprocessed name and function pointer
-            writeln!(write, "vk_function!{{\"{}\", {}(", r, &*c.name).unwrap();
+            writeln!(write, "    \"{}\", {}(", r, &*c.name).unwrap();
             for p in c.params.iter() {
                 write!(write, "        {}: ", &*p.name).unwrap();
                 gen_func_param!(write, &p.typ);
@@ -851,15 +851,9 @@ impl<'a> VkRegistry<'a> {
             }
             write!(write, "    ) -> ").unwrap();
             gen_func_param!(write, &c.ret);
-            writeln!(write, "}}\n").unwrap();
+            writeln!(write, ";\n").unwrap();
         }}
-
-        writeln!(write, "pub fn load_with<F: FnMut(&str) -> *const ()>(mut load_fn: F) -> Result<(), Vec<&'static str>> {{unsafe{{").unwrap();
-        writeln!(write, "    use std::{{mem, ptr}}; let mut fn_buf: *const (); let mut unloaded_fns = Vec::new();").unwrap();
-        for c in preproc.commands.iter() {unsafe{
-            writeln!(write, include_str!("load_fn.rs"), &*c.name).unwrap();
-        }}
-        writeln!(write, "    if 0 == unloaded_fns.len() {{Ok(())}} else {{Err(unloaded_fns)}}\n}}}}").unwrap();
+        writeln!(write, "}}").unwrap();
     }
 
     pub fn gen_struct<W: WriteIo>(&self, write: &mut W, version: VkVersion, extensions: &[&str], config: GenConfig) {
