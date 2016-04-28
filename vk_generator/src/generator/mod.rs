@@ -11,6 +11,7 @@ use boolinator::Boolinator;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct GenConfig<'a> {
     pub remove_type_prefix: bool,
+    pub remove_result_prefix: bool,
     pub remove_command_prefix: bool,
     pub remove_enum_padding: bool,
     pub remove_bitmask_prefix: bool,
@@ -36,6 +37,7 @@ impl<'a> default::Default for GenConfig<'a> {
     fn default() -> GenConfig<'a> {
         GenConfig {
             remove_type_prefix: true,
+            remove_result_prefix: true,
             remove_command_prefix: true,
             remove_enum_padding: true,
             remove_bitmask_prefix: true,
@@ -286,7 +288,7 @@ impl<'a, 'b> GenPreproc<'a, 'b> {
             _ => ()
         }
 
-        if self.config.remove_type_prefix && "VkResult" != ident {
+        if self.config.remove_type_prefix && (self.config.remove_result_prefix || "VkResult" != ident) {
             if let Some(0) = ident.find("Vk") {
                 ident = &ident[2..];
             }

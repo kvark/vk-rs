@@ -33,7 +33,7 @@ macro_rules! vk_struct_bindings {
                 vk
             }}
 
-            pub fn reload_fns<F: FnMut(&str) -> *const ()>(&mut self, mut load_fn: F) -> Result<(), Vec<&'static str>> {unsafe{
+            pub fn reload_fns<F: FnMut(&str) -> *const ()>(&mut self, mut load_fn: F) -> ::std::result::Result<(), Vec<&'static str>> {unsafe{
                 use std::{mem, ptr};
                 let mut fn_buf: *const ();
                 let mut unloaded_fns = Vec::new();

@@ -23,7 +23,7 @@ macro_rules! vk_functions {
             }
         )+
 
-        pub fn load_with<F: FnMut(&str) -> *const ()>(mut load_fn: F) -> Result<(), Vec<&'static str>> {unsafe{
+        pub fn load_with<F: FnMut(&str) -> *const ()>(mut load_fn: F) -> ::std::result::Result<(), Vec<&'static str>> {unsafe{
             use std::ptr; 
             let mut fn_buf: *const (); 
             let mut unloaded_fns = Vec::new();
