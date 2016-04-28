@@ -859,7 +859,8 @@ impl<'a> VkRegistry<'a> {
     pub fn gen_global<W: WriteIo>(&self, write: &mut W, version: VkVersion, extensions: &[&str], config: GenConfig) {
         let preproc = GenPreproc::new(self, version, extensions, config);
 
-        writeln!(write, "{}", include_str!("prelude.rs")).unwrap();
+        writeln!(write, "{}", include_str!("prelude_common.rs")).unwrap();
+        writeln!(write, "{}", include_str!("prelude_global_gen.rs")).unwrap();
         GenTypes::new(&preproc).write_types(write);
 
         writeln!(write, "vk_functions!{{").unwrap();
@@ -880,6 +881,7 @@ impl<'a> VkRegistry<'a> {
     pub fn gen_struct<W: WriteIo>(&self, write: &mut W, version: VkVersion, extensions: &[&str], config: GenConfig) {
         let preproc = GenPreproc::new(self, version, extensions, config);
 
+        writeln!(write, "{}", include_str!("prelude_common.rs")).unwrap();
         writeln!(write, "{}", include_str!("prelude_struct_gen.rs")).unwrap();
         GenTypes::new(&preproc).write_types(write);
 
