@@ -265,7 +265,7 @@ impl<'a, 'b> GenPreproc<'a, 'b> {
         } else {None}
     }
 
-    fn process_type_ident(&self, ident: *const str) -> *const str {
+    fn process_type_ident(&mut self, ident: *const str) -> *const str {
         let mut ident = unsafe{ &*ident };
 
         match ident {
@@ -291,6 +291,14 @@ impl<'a, 'b> GenPreproc<'a, 'b> {
                 ident = &ident[2..];
             }
         }
+
+        if let Some(i) = ident.find("FlagBits") {unsafe {
+            ident = &*self.append_char_func(|s| 
+                for c in ident[..i].chars().chain("Flags".chars()).chain(ident[i+8..].chars()) {
+                    s.push(c);
+                }
+            );
+        }}
 
         ident
     }
@@ -621,6 +629,7 @@ impl GenTypes {
                 Bitmask{name, ref variants} => {
                     let bitmasks = &mut gen_types.bitmasks;
                     let name = unsafe{ &*name };
+
                     let flags_name = unsafe{ &*processed.types.get("VkFlags").unwrap().name().unwrap() };
 
                     if processed.config.wrap_bitmasks {
@@ -661,8 +670,11 @@ impl GenTypes {
                     }
                 }
 
-                TypeDef{name, typ, ..} => {
-                    writeln!(gen_types.typedefs, "pub type {} = {};", unsafe{ &*name }, unsafe{ &*typ }).unwrap();
+                TypeDef{name, typ, requires, ..} => {
+                    let (name, typ, requires) = unsafe{ (&*name, &*typ, to_option(requires)) };
+                    if (typ != "Flags" && typ != "VkFlags") || requires == None {
+                        writeln!(gen_types.typedefs, "pub type {} = {};", name, typ).unwrap();
+                    }
                 }
 
                 ApiConst{name, value} => {

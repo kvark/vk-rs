@@ -77,8 +77,14 @@ macro_rules! handle_nondispatchable {
 macro_rules! vk_bitflags_wrapped {
     ($name: ident, $all: expr, $flag_type: ty) => {
         #[repr(C)]
-        #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+        #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
         pub struct $name {flags: $flag_type}
+
+        impl fmt::Debug for $name {
+            fn fmt(&self, f: &mut fmt::Formatter) -> ::std::result::Result<(), fmt::Error> {
+                write!(f, "{}({:b})", stringify!($name), self.flags)
+            }
+        }
 
         impl $name {
             #[inline]
