@@ -872,10 +872,7 @@ impl<'a> VkRegistry<'a> {
         GenTypes::new(&preproc).write_types(write);
 
         writeln!(write, "pub mod cmds {{").unwrap();
-        if !preproc.config.snake_case_commands {
-            writeln!(write, "#![allow(non_snake_case)]").unwrap();
-        }
-        if !preproc.config.snake_case_members {
+        if !preproc.config.snake_case_commands || !preproc.config.snake_case_members {
             writeln!(write, "#![allow(non_snake_case)]").unwrap();
         }
         writeln!(write, "use super::*;").unwrap();
@@ -904,9 +901,9 @@ impl<'a> VkRegistry<'a> {
 
         writeln!(write, "pub mod cmds {{").unwrap();
         if !preproc.config.snake_case_commands {
-            writeln!(write, "#![allow(non_snake_case, non_camel_case_types)]").unwrap();
+            writeln!(write, "#![allow(non_camel_case_types)]").unwrap();
         }
-        if !preproc.config.snake_case_members {
+        if !preproc.config.snake_case_members || !preproc.config.snake_case_commands {
             writeln!(write, "#![allow(non_snake_case)]").unwrap();
         }
         writeln!(write, "use super::*;").unwrap();
