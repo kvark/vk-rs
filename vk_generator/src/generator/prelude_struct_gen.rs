@@ -9,7 +9,7 @@ macro_rules! vk_struct_bindings {
 
         impl FnPtr {
             pub fn is_loaded(&self) -> bool {
-                unsafe{ self.fn_ptr != unloaded_function_panic as *const () }
+                self.fn_ptr != unloaded_function_panic as *const ()
             }
         }
 
@@ -33,8 +33,8 @@ macro_rules! vk_struct_bindings {
                 vk
             }}
 
-            pub fn reload_fns<F: FnMut(&str) -> *const ()>(&mut self, mut load_fn: F) -> ::std::result::Result<(), Vec<&'static str>> {unsafe{
-                use std::{mem, ptr};
+            pub fn reload_fns<F: FnMut(&str) -> *const ()>(&mut self, mut load_fn: F) -> ::std::result::Result<(), Vec<&'static str>> {
+                use std::ptr;
                 let mut fn_buf: *const ();
                 let mut unloaded_fns = Vec::new();
 
@@ -42,7 +42,7 @@ macro_rules! vk_struct_bindings {
                     fn_buf = load_fn($raw_name);
                     if ptr::null() != fn_buf {
                         self.$name = FnPtr{ RAW_NAME: $raw_name, fn_ptr: fn_buf };
-                    } else if $name::fn_ptr != unloaded_function_panic as *const () {
+                    } else if self.$name.fn_ptr != unloaded_function_panic as *const () {
                         unloaded_fns.push($raw_name)
                     }
                 )+
@@ -52,7 +52,7 @@ macro_rules! vk_struct_bindings {
                 } else {
                     Err(unloaded_fns)
                 }
-            }}
+            }
 
             $(
                 pub unsafe extern "system" fn $name(&self, $($param_name: $param),*) -> $ret {

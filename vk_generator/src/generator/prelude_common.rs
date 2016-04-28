@@ -1,5 +1,6 @@
-use self::types::*;
 pub use std::os::raw::c_ulonglong;
+pub use self::types::*;
+pub use self::cmds::*;
 
 #[doc(hidden)]
 pub fn unloaded_function_panic() -> ! {

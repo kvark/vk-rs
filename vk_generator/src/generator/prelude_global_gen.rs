@@ -10,8 +10,7 @@ macro_rules! vk_functions {
             }
 
             pub mod $name {
-                use super::*;
-                use super::types::*;
+                use super::super::*;
                 pub const RAW_NAME: &'static str = $raw_name;
                 pub static mut fn_ptr: *const () = unloaded_function_panic as *const ();
                 #[doc(hidden)]

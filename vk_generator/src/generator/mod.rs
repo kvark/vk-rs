@@ -11,13 +11,13 @@ use boolinator::Boolinator;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct GenConfig<'a> {
     pub remove_type_prefix: bool,
-    pub remove_result_prefix: bool,
+    pub remove_vk_result_prefix: bool,
     pub remove_command_prefix: bool,
     pub remove_enum_padding: bool,
     pub remove_bitmask_prefix: bool,
     pub snake_case_commands: bool,
     pub camel_case_enums: bool,
-    pub camel_case_members: bool,
+    pub snake_case_members: bool,
     pub debug_c_strings: bool,
 
     pub wrap_bitmasks: bool,
@@ -36,14 +36,14 @@ impl<'a> GenConfig<'a> {
 impl<'a> default::Default for GenConfig<'a> {
     fn default() -> GenConfig<'a> {
         GenConfig {
-            remove_type_prefix: true,
-            remove_result_prefix: true,
+            remove_type_prefix: false,
+            remove_vk_result_prefix: true,
             remove_command_prefix: true,
             remove_enum_padding: true,
             remove_bitmask_prefix: true,
             snake_case_commands: true,
             camel_case_enums: true,
-            camel_case_members: true,
+            snake_case_members: true,
             debug_c_strings: true,
 
             wrap_bitmasks: true,
@@ -212,7 +212,7 @@ impl<'a, 'b> GenPreproc<'a, 'b> {
     fn process_member_name(&mut self, name: *const str) -> *const str {
         let mut name = unsafe{ &*name };
 
-        if self.config.camel_case_members { unsafe {
+        if self.config.snake_case_members { unsafe {
             name = &*self.append_char_func(|s| {
                 let mut cl = ' ';
                 for c in name.chars() {
@@ -288,7 +288,7 @@ impl<'a, 'b> GenPreproc<'a, 'b> {
             _ => ()
         }
 
-        if self.config.remove_type_prefix && (self.config.remove_result_prefix || "VkResult" != ident) {
+        if self.config.remove_type_prefix && (self.config.remove_vk_result_prefix || "VkResult" != ident) {
             if let Some(0) = ident.find("Vk") {
                 ident = &ident[2..];
             }
@@ -478,7 +478,8 @@ macro_rules! gen_func_param {
     }
 }
 
-struct GenTypes {
+struct GenTypes<'a> {
+    config:       &'a GenConfig<'a>,
     structs:      String,
     unions:       String,
     enums:        String,
@@ -490,9 +491,10 @@ struct GenTypes {
     externs:      String
 }
 
-impl GenTypes {
-    fn new(processed: &GenPreproc) -> GenTypes {
+impl<'a> GenTypes<'a> {
+    fn new(processed: &'a GenPreproc) -> GenTypes<'a> {
         let mut gen_types = GenTypes {
+            config:       &processed.config,
             structs:      String::with_capacity(2usize.pow(17)),
             unions:       String::with_capacity(2usize.pow(13)),//take that you superstitious bastards 
             enums:        String::with_capacity(2usize.pow(15)),
@@ -587,7 +589,7 @@ impl GenTypes {
                                     ConstArray(t, _)      |
                                     MutArrayEnum(t, _)    |
                                     ConstArrayEnum(t, _) => 
-                                        if processed.config.debug_c_strings && "c_char" == &*t {
+                                        if gen_types.config.debug_c_strings && "c_char" == &*t {
                                             writeln!(structs, ".field(\"{0}\", &unsafe{{ CStr::from_ptr(&self.{0}[0]) }})", n)
                                         } else {writeln!(structs, ".field(\"{0}\", &&self.{0}[..])", n)},
                                     _                    => writeln!(structs, ".field(\"{0}\", &self.{0})", n)
@@ -634,7 +636,7 @@ impl GenTypes {
 
                     let flags_name = unsafe{ &*processed.types.get("VkFlags").unwrap().name().unwrap() };
 
-                    if processed.config.wrap_bitmasks {
+                    if gen_types.config.wrap_bitmasks {
                         let mut all_bits = 0;
                         for v in variants {unsafe {
                             let bits = 
@@ -737,10 +739,10 @@ impl GenTypes {
                 ExternType{name, requires} => {
                     let externs = &mut gen_types.externs;
                     let (name, requires) = unsafe{ (&*name, &*requires) };
-                    if let Some(over) = processed.config.extern_type_overrides.iter().find(|o| o.0 == name) {
+                    if let Some(over) = gen_types.config.extern_type_overrides.iter().find(|o| o.0 == name) {
                         writeln!(externs, "pub type {} = ::{};", name, over.1).unwrap();
                     } else if "vk_platform" == requires {
-                        if processed.config.use_libc_types {
+                        if gen_types.config.use_libc_types {
                             writeln!(externs, "use libc::{};", name).unwrap();
                         } else {
                             let typ =
@@ -829,6 +831,10 @@ impl GenTypes {
         writeln!(write, "{}", include_str!("defines.rs")).unwrap();
         writeln!(write, "pub mod types {{").unwrap();
         writeln!(write, "#![allow(non_camel_case_types)]").unwrap();
+        if !self.config.snake_case_members {
+            writeln!(write, "#![allow(non_snake_case)]").unwrap();
+        }
+
         writeln!(write, "use std::fmt; use std::ops::*; use std::ffi::CStr; use super::*;").unwrap();
         writeln!(write, "{}", &self.externs).unwrap();
         writeln!(write, "{}", &self.typedefs).unwrap();
@@ -865,6 +871,15 @@ impl<'a> VkRegistry<'a> {
         writeln!(write, "{}", include_str!("prelude_global_gen.rs")).unwrap();
         GenTypes::new(&preproc).write_types(write);
 
+        writeln!(write, "pub mod cmds {{").unwrap();
+        if !preproc.config.snake_case_commands {
+            writeln!(write, "#![allow(non_snake_case)]").unwrap();
+        }
+        if !preproc.config.snake_case_members {
+            writeln!(write, "#![allow(non_snake_case)]").unwrap();
+        }
+        writeln!(write, "use super::*;").unwrap();
+
         writeln!(write, "vk_functions!{{").unwrap();
         for (c, r) in preproc.commands.iter().zip(preproc.commands_raw.into_iter()) {unsafe{
             writeln!(write, "    \"{}\", {}(", r, &*c.name).unwrap();
@@ -877,7 +892,7 @@ impl<'a> VkRegistry<'a> {
             gen_func_param!(write, &c.ret);
             writeln!(write, ";\n").unwrap();
         }}
-        writeln!(write, "}}").unwrap();
+        writeln!(write, "}}}}").unwrap();
     }
 
     pub fn gen_struct<W: WriteIo>(&self, write: &mut W, version: VkVersion, extensions: &[&str], config: GenConfig) {
@@ -886,6 +901,15 @@ impl<'a> VkRegistry<'a> {
         writeln!(write, "{}", include_str!("prelude_common.rs")).unwrap();
         writeln!(write, "{}", include_str!("prelude_struct_gen.rs")).unwrap();
         GenTypes::new(&preproc).write_types(write);
+
+        writeln!(write, "pub mod cmds {{").unwrap();
+        if !preproc.config.snake_case_commands {
+            writeln!(write, "#![allow(non_snake_case, non_camel_case_types)]").unwrap();
+        }
+        if !preproc.config.snake_case_members {
+            writeln!(write, "#![allow(non_snake_case)]").unwrap();
+        }
+        writeln!(write, "use super::*;").unwrap();
 
         writeln!(write, "vk_struct_bindings!{{").unwrap();
         for (c, r) in preproc.commands.iter().zip(preproc.commands_raw.into_iter()) {unsafe{
@@ -899,7 +923,7 @@ impl<'a> VkRegistry<'a> {
             gen_func_param!(write, &c.ret);
             writeln!(write, ";\n").unwrap();
         }}
-        writeln!(write, "}}").unwrap();
+        writeln!(write, "}}}}").unwrap();
     }
 }
 
