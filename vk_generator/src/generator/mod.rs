@@ -894,7 +894,7 @@ impl<'a> GenTypes<'a> {
     fn write_types<W: WriteIo>(&self, write: &mut W) {
         writeln!(write, "{}", include_str!("defines.rs")).unwrap();
         writeln!(write, "pub mod types {{").unwrap();
-        writeln!(write, "#![allow(non_camel_case_types)]").unwrap();
+        writeln!(write, "#![allow(non_camel_case_types, dead_code)]").unwrap();
         if !self.config.snake_case_members {
             writeln!(write, "#![allow(non_snake_case)]").unwrap();
         }
@@ -936,6 +936,7 @@ impl<'a> VkRegistry<'a> {
         GenTypes::new(&preproc).write_types(write);
 
         writeln!(write, "pub mod cmds {{").unwrap();
+        writeln!(write, "#![allow(dead_code)]").unwrap();
         if !preproc.config.snake_case_commands || !preproc.config.snake_case_members {
             writeln!(write, "#![allow(non_snake_case)]").unwrap();
         }
@@ -964,6 +965,7 @@ impl<'a> VkRegistry<'a> {
         GenTypes::new(&preproc).write_types(write);
 
         writeln!(write, "pub mod cmds {{").unwrap();
+        writeln!(write, "#![allow(dead_code)]").unwrap();
         if preproc.config.snake_case_commands {
             writeln!(write, "#![allow(non_camel_case_types)]").unwrap();
         }

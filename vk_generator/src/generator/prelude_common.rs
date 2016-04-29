@@ -3,6 +3,7 @@ pub use self::types::*;
 pub use self::cmds::*;
 
 #[doc(hidden)]
+#[allow(dead_code)]
 pub fn unloaded_function_panic() -> ! {
     panic!("Attempted to run unloaded vulkan function")
 }

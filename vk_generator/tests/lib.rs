@@ -6,6 +6,7 @@ use std::fs::{File, DirBuilder};
 use std::env;
 use std::process::Command;
 use std::io::Write;
+use std::str;
 
 use vk_generator::registry::VkVersion;
 
@@ -15,13 +16,14 @@ fn default_global() {
     DirBuilder::new().recursive(true).create(&out).unwrap();
 
     let mut file = File::create(&Path::new(&out).join("default_global.rs")).unwrap();
-    writeln!(file, "fn main() {{}}").unwrap();
+    writeln!(file, "fn main() {{}} mod vk {{").unwrap();
     vk_generator::VkRegistry::new(vk_api::VK_XML).gen_global(&mut file,
                                                              VkVersion(1, 0), 
                                                              &["VK_KHR_surface"],
                                                              Default::default());
+    writeln!(file, "}}").unwrap();
 
-    assert_eq!(0, Command::new("rustc").current_dir(&out).arg("default_global.rs").output().unwrap().stderr.len());
+    assert_eq!("", str::from_utf8(&Command::new("rustc").current_dir(&out).arg("default_global.rs").output().unwrap().stderr).unwrap());
 }
 
 #[test]
@@ -30,11 +32,12 @@ fn default_struct() {
     DirBuilder::new().recursive(true).create(&out).unwrap();
 
     let mut file = File::create(&Path::new(&out).join("default_struct.rs")).unwrap();
-    writeln!(file, "fn main() {{}}").unwrap();
+    writeln!(file, "fn main() {{}} mod vk {{").unwrap();
     vk_generator::VkRegistry::new(vk_api::VK_XML).gen_struct(&mut file,
                                                              VkVersion(1, 0), 
                                                              &["VK_KHR_surface"],
                                                              Default::default());
+    writeln!(file, "}}").unwrap();
 
-    assert_eq!(0, Command::new("rustc").current_dir(&out).arg("default_struct.rs").output().unwrap().stderr.len());
+    assert_eq!("", str::from_utf8(&Command::new("rustc").current_dir(&out).arg("default_struct.rs").output().unwrap().stderr).unwrap());
 }
