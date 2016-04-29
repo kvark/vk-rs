@@ -3,7 +3,7 @@ macro_rules! vk_struct_bindings {
         $(type $name = unsafe extern "system" fn($($param),*) -> $ret);+;
 
         pub struct FnPtr {
-            pub RAW_NAME: &'static str,
+            pub raw_name: &'static str,
             fn_ptr: *const ()
         }
 
@@ -26,7 +26,7 @@ macro_rules! vk_struct_bindings {
                 $(
                     fn_buf = load_fn($raw_name);
                     if ptr::null() != fn_buf {
-                        vk.$name = FnPtr{ RAW_NAME: $raw_name, fn_ptr: fn_buf };
+                        vk.$name = FnPtr{ raw_name: $raw_name, fn_ptr: fn_buf };
                     }
                 )+
 
@@ -41,7 +41,7 @@ macro_rules! vk_struct_bindings {
                 $(
                     fn_buf = load_fn($raw_name);
                     if ptr::null() != fn_buf {
-                        self.$name = FnPtr{ RAW_NAME: $raw_name, fn_ptr: fn_buf };
+                        self.$name = FnPtr{ raw_name: $raw_name, fn_ptr: fn_buf };
                     } else if self.$name.fn_ptr != unloaded_function_panic as *const () {
                         unloaded_fns.push($raw_name)
                     }

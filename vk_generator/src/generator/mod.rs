@@ -900,7 +900,7 @@ impl<'a> VkRegistry<'a> {
         GenTypes::new(&preproc).write_types(write);
 
         writeln!(write, "pub mod cmds {{").unwrap();
-        if !preproc.config.snake_case_commands {
+        if preproc.config.snake_case_commands {
             writeln!(write, "#![allow(non_camel_case_types)]").unwrap();
         }
         if !preproc.config.snake_case_members || !preproc.config.snake_case_commands {
