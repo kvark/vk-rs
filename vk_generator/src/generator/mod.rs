@@ -26,6 +26,70 @@ pub struct GenConfig<'a> {
 }
 
 impl<'a> GenConfig<'a> {
+    pub fn new() -> GenConfig<'a> {
+        Default::default()
+    }
+
+    pub fn remove_type_prefix(mut self, remove_type_prefix: bool) -> GenConfig<'a> {
+        self.remove_type_prefix = remove_type_prefix;
+        self
+    }
+
+    pub fn remove_vk_result_prefix(mut self, remove_vk_result_prefix: bool) -> GenConfig<'a> {
+        self.remove_vk_result_prefix = remove_vk_result_prefix;
+        self
+    }
+
+    pub fn remove_command_prefix(mut self, remove_command_prefix: bool) -> GenConfig<'a> {
+        self.remove_command_prefix = remove_command_prefix;
+        self
+    }
+
+    pub fn remove_enum_padding(mut self, remove_enum_padding: bool) -> GenConfig<'a> {
+        self.remove_enum_padding = remove_enum_padding;
+        self
+    }
+
+    pub fn remove_bitmask_prefix(mut self, remove_bitmask_prefix: bool) -> GenConfig<'a> {
+        self.remove_bitmask_prefix = remove_bitmask_prefix;
+        self
+    }
+
+    pub fn snake_case_commands(mut self, snake_case_commands: bool) -> GenConfig<'a> {
+        self.snake_case_commands = snake_case_commands;
+        self
+    }
+
+    pub fn camel_case_enums(mut self, camel_case_enums: bool) -> GenConfig<'a> {
+        self.camel_case_enums = camel_case_enums;
+        self
+    }
+
+    pub fn snake_case_members(mut self, snake_case_members: bool) -> GenConfig<'a> {
+        self.snake_case_members = snake_case_members;
+        self
+    }
+
+    pub fn debug_c_strings(mut self, debug_c_strings: bool) -> GenConfig<'a> {
+        self.debug_c_strings = debug_c_strings;
+        self
+    }
+
+    pub fn wrap_bitmasks(mut self, wrap_bitmasks: bool) -> GenConfig<'a> {
+        self.wrap_bitmasks = wrap_bitmasks;
+        self
+    }
+
+    pub fn use_libc_types(mut self, use_libc_types: bool) -> GenConfig<'a> {
+        self.use_libc_types = use_libc_types;
+        self
+    }
+
+    pub fn extern_type_overrides(mut self, extern_type_overrides: &'a [(&'a str, &'a str)]) -> GenConfig<'a> {
+        self.extern_type_overrides = extern_type_overrides;
+        self
+    }
+
     fn modifies_signatures(&self) -> bool {
         self.remove_command_prefix ||
         self.snake_case_commands ||

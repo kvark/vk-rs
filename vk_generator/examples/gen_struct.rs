@@ -1,12 +1,19 @@
 extern crate vk_generator;
 extern crate vk_api;
 
-use std::fs::File;
+use std::path::Path;
+use std::fs::{File, DirBuilder};
+use std::env;
 
 use vk_generator::registry::VkVersion;
 
+
 fn main() {
-    vk_generator::VkRegistry::new(vk_api::VK_XML).gen_struct(&mut File::create("vk.rs").unwrap(),
+    let out = env::var("OUT_DIR").unwrap();
+    DirBuilder::new().recursive(true).create(&out).unwrap();
+    
+    let mut file = File::create(&Path::new(&out).join("gen_struct.rs")).unwrap();
+    vk_generator::VkRegistry::new(vk_api::VK_XML).gen_struct(&mut file,
                                                              VkVersion(1, 0), 
                                                              &["VK_KHR_surface"],
                                                              Default::default());
