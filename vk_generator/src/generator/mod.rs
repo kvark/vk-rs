@@ -3,8 +3,8 @@ use registry::*;
 use std::collections::{HashMap, HashSet};
 use std::iter::Iterator;
 use std::default;
-use std::fmt::Write as WriteFmt;
-use std::io::Write as WriteIo;
+use std::fmt::Write as FmtWrite;
+use std::io::Write;
 
 use boolinator::Boolinator;
 
@@ -13,10 +13,10 @@ pub struct GenConfig<'a> {
     pub remove_type_prefix: bool,
     pub remove_vk_result_prefix: bool,
     pub remove_command_prefix: bool,
-    pub remove_enum_padding: bool,
+    pub remove_variant_padding: bool,
     pub remove_bitmask_prefix: bool,
     pub snake_case_commands: bool,
-    pub camel_case_enums: bool,
+    pub camel_case_variants: bool,
     pub snake_case_members: bool,
     pub debug_c_strings: bool,
 
@@ -26,65 +26,164 @@ pub struct GenConfig<'a> {
 }
 
 impl<'a> GenConfig<'a> {
+    /// Create a new generator config. Is identical to `Default::default()`.
     pub fn new() -> GenConfig<'a> {
         Default::default()
     }
 
+    /// Whether or not to remove the `Vk` prefix on structs, enums, and typedefs.
+    /// 
+    /// As an example, take the struct `VkInstanceCreateInfo`. If this is set to `true`, the generator
+    /// will turn that into `InstanceCreateInfo`.
+    /// 
+    /// Defaults to `false`.
     pub fn remove_type_prefix(mut self, remove_type_prefix: bool) -> GenConfig<'a> {
         self.remove_type_prefix = remove_type_prefix;
         self
     }
 
+    /// Whether or not to remove the `Vk` prefix from the `VkResult` enum, **IF AND ONLY IF**
+    /// remove_type_prefix is also set to `true`. This flag exists primarily because Rust already
+    /// contains a type named `Result` and one might desire to remove any ambiguity the `VkResult` type
+    /// may cause.
+    /// 
+    /// Defaults to `true`.
     pub fn remove_vk_result_prefix(mut self, remove_vk_result_prefix: bool) -> GenConfig<'a> {
         self.remove_vk_result_prefix = remove_vk_result_prefix;
         self
     }
 
+    /// Whether or not to remove the `vk` prefix from Vulkan commands.
+    /// 
+    /// For example, if we have the command `vkCreateInstance` setting this flag to `true` will turn
+    /// that into `createInstance`.
+    /// 
+    /// Defaults to `true`.
     pub fn remove_command_prefix(mut self, remove_command_prefix: bool) -> GenConfig<'a> {
         self.remove_command_prefix = remove_command_prefix;
         self
     }
 
-    pub fn remove_enum_padding(mut self, remove_enum_padding: bool) -> GenConfig<'a> {
-        self.remove_enum_padding = remove_enum_padding;
+    /// Whether or not to remove the padding from enum variants.
+    ///
+    /// For example, the Vulkan xml registry defines the enum `VkPresentModeKHR`, with a variant
+    /// `VK_PRESENT_MODE_IMMEDIATE_KHR`. If this is `true`, `VK_PRSESNT_MODE_` and `_KHR` will be will 
+    /// be removed from start and end respectively, resulting in the variant name `IMMEDIATE`. If the
+    /// variant does not have a suffix this will only remove the prefix.
+    /// 
+    /// Defaults to `true`.
+    pub fn remove_variant_padding(mut self, remove_variant_padding: bool) -> GenConfig<'a> {
+        self.remove_variant_padding = remove_variant_padding;
         self
     }
 
+    /// Whether or not to remove the `VK_` prefix from bitmask variants.
+    /// 
+    /// For example, the xml registry defines the bitmask `VkQueueFlagBits` with the flag
+    /// `VK_QUEUE_GRAPHICS_BIT`. If this is `true`, this will result in the variant being turned into
+    /// `QUEUE_GRAPHICS_BIT`.
+    /// 
+    /// Defaults to `true`.
     pub fn remove_bitmask_prefix(mut self, remove_bitmask_prefix: bool) -> GenConfig<'a> {
         self.remove_bitmask_prefix = remove_bitmask_prefix;
         self
     }
 
+    /// Whether or not to transform Vulkan command identifiers to be a Rust-y snake_case.
+    /// 
+    /// For example, the registry defines the command `vkCreateInstance`. If this is `true`, that
+    /// command will be turned into `vk_create_instance`. This, and the other name-style-altering
+    /// options, primarily exists for the purpose of having Vulkan code integrate more cleanly into
+    /// native Rust code.
+    /// 
+    /// Defaults to `true`.
     pub fn snake_case_commands(mut self, snake_case_commands: bool) -> GenConfig<'a> {
         self.snake_case_commands = snake_case_commands;
         self
     }
 
-    pub fn camel_case_enums(mut self, camel_case_enums: bool) -> GenConfig<'a> {
-        self.camel_case_enums = camel_case_enums;
+    /// Whether or not to transform enum variants into CamelCase.
+    /// 
+    /// For example, if we look at `VkStructureType`'s `VK_STRUCTURE_TYPE_APPLICATION_INFO` setting
+    /// this to `true` would result in the variant being turned into `VkStructureTypeApplicationInfo`.
+    /// 
+    /// Defaults to `true`.
+    pub fn camel_case_variants(mut self, camel_case_variants: bool) -> GenConfig<'a> {
+        self.camel_case_variants = camel_case_variants;
         self
     }
 
+    /// Whether or not to transform struct/union members and command parameters into snake_case.
+    /// 
+    /// For example, if we look at the `VkApplicationInfo` struct's `applicationVersion` field, setting
+    /// this to `true` would result in the field being turned into `application_version`.
+    /// 
+    /// Defaults to `true`.
     pub fn snake_case_members(mut self, snake_case_members: bool) -> GenConfig<'a> {
         self.snake_case_members = snake_case_members;
         self
     }
 
+    /// When printing structs with fields that are arrays of c_chars, whether to print them as arrays
+    /// of bytes or as a string.
+    ///
+    /// Defaults to `true`.
     pub fn debug_c_strings(mut self, debug_c_strings: bool) -> GenConfig<'a> {
         self.debug_c_strings = debug_c_strings;
         self
     }
 
+    /// Whether or not to wrap bitmasks with a set of convenience functions similar to the 
+    /// [bitflags](https://doc.rust-lang.org/bitflags/bitflags/macro.bitflags!.html) crate.
+    ///
+    /// Defaults to `true`.
     pub fn wrap_bitmasks(mut self, wrap_bitmasks: bool) -> GenConfig<'a> {
         self.wrap_bitmasks = wrap_bitmasks;
         self
     }
 
+    /// The Vulkan library uses a lot of `C` types, as per it's nature of exposing a `C` ABI. There are
+    /// a few ways we can handle using those types: either we can define the typedefs ourself or we can
+    /// use the types provided by `libc`. Because `libc` isn't implicitly included in crates we default
+    /// to defining the types ourself. Setting this to `true` makes the generated file import types
+    /// from `libc` instead of defining them itself.
     pub fn use_libc_types(mut self, use_libc_types: bool) -> GenConfig<'a> {
         self.use_libc_types = use_libc_types;
         self
     }
 
+    /// This defines a set of type overrides, primarily intended for use with the WSI extensions. It
+    /// takes a slice of (&str, &str) tuples, with the left side being the name of the type and the
+    /// right side being the new definition of the type.
+    /// 
+    /// For an example let's look at the Windows WSI extension, which includes the struct
+    /// `VkWin32SurfaceCreateInfoKHR`. That struct takes a `HWND` and a `HINSTANCE` in order to let Vulkan
+    /// draw to windows; however, the generator is unaware of both `HWND` and `HINSTANCE`, which are
+    /// defined in `winapi`. Because it has no idea what those types should be the generator defaults
+    /// to `type HWND = *const ()`, which isn't what HWNDs are defined as in `winapi`. So we call this:
+    ///
+    /// ```
+    /// # use vk_generator::generator::GenConfig;
+    /// GenConfig::new()
+    ///     .extern_type_overrides(&[("HWND", "winapi::HWND"),
+    ///                              ("HINSTANCE", "winapi::HINSTANCE")]);
+    /// ```
+    /// 
+    /// This tells the generator to use the `winapi` defintions of HWND instead of the blind 
+    /// definition, making the generator produce these for the type defintions:
+    /// 
+    /// ```
+    /// # mod winapi {
+    /// #     // That's right, they're just being defined as `*const ()` again. Whatcha gonna do?
+    /// #     // 
+    /// #     // In all seriousness, this is just here to make the example compile with `cargo test`. It would really
+    /// #     // link to `winapi` if we were actually using the generator.
+    /// #     pub type HWND = *const ();
+    /// #     pub type HINSTANCE = *const ();
+    /// # }
+    /// type HWND = winapi::HWND;
+    /// type HINSTANCE = winapi::HINSTANCE;
+    /// ```
     pub fn extern_type_overrides(mut self, extern_type_overrides: &'a [(&'a str, &'a str)]) -> GenConfig<'a> {
         self.extern_type_overrides = extern_type_overrides;
         self
@@ -93,7 +192,7 @@ impl<'a> GenConfig<'a> {
     fn modifies_signatures(&self) -> bool {
         self.remove_command_prefix ||
         self.snake_case_commands ||
-        self.camel_case_enums
+        self.camel_case_variants
     }
 }
 
@@ -103,10 +202,10 @@ impl<'a> default::Default for GenConfig<'a> {
             remove_type_prefix: false,
             remove_vk_result_prefix: true,
             remove_command_prefix: true,
-            remove_enum_padding: true,
+            remove_variant_padding: true,
             remove_bitmask_prefix: true,
             snake_case_commands: true,
-            camel_case_enums: true,
+            camel_case_variants: true,
             snake_case_members: true,
             debug_c_strings: true,
 
@@ -382,7 +481,7 @@ impl<'a, 'b> GenPreproc<'a, 'b> {
 
     fn process_enum_variant(&mut self, variant: &mut VkVariant, enum_name: *const str) {
         let enum_name = unsafe{ &*enum_name };
-        if self.config.remove_enum_padding {
+        if self.config.remove_variant_padding {
             let name_parts: Vec<_> = enum_name
                                         .char_indices()
                                         .filter_map( |(i, c)| (c.is_uppercase()).as_some(i) )
@@ -425,7 +524,7 @@ impl<'a, 'b> GenPreproc<'a, 'b> {
             } else {variant.set_name(&vn[old_start..])}
         }
 
-        if self.config.camel_case_enums {
+        if self.config.camel_case_variants {
             unsafe{ 
                 let vn = &*variant.name();
                 let vn_new = self.append_char_func(
@@ -891,7 +990,7 @@ impl<'a> GenTypes<'a> {
         gen_types
     }
 
-    fn write_types<W: WriteIo>(&self, write: &mut W) {
+    fn write_types<W: Write>(&self, write: &mut W) {
         writeln!(write, "{}", include_str!("defines.rs")).unwrap();
         writeln!(write, "pub mod types {{").unwrap();
         writeln!(write, "#![allow(non_camel_case_types, dead_code)]").unwrap();
@@ -928,7 +1027,31 @@ enum ConstType {
 }
 
 impl<'a> VkRegistry<'a> {
-    pub fn gen_global<W: WriteIo>(&self, write: &mut W, version: VkVersion, extensions: &[&str], config: GenConfig) {
+    /// Write global bindings for Vulkan API [`version`] \(1.0, 1.1, etc.) to the file [`write`] with 
+    /// the specified `extensions` and [`config`]
+    /// # Examples
+    /// 
+    /// ```no_run
+    /// # extern crate vk_generator;
+    /// # extern crate vk_api;
+    /// # 
+    /// # use vk_generator::{VkRegistry, GenConfig, VkVersion};
+    /// # use std::env;
+    /// # use std::fs::File;
+    /// # use std::path::Path;
+    /// # 
+    /// let out = env::var("OUT_DIR").unwrap();
+    /// let mut file = File::create(&Path::new(&out).join("vk.rs")).unwrap();
+    /// VkRegistry::new(vk_api::VK_XML).gen_global(&mut file,
+    ///                                            VkVersion(1, 0),
+    ///                                            &[],
+    ///                                            GenConfig::new());
+    /// ```
+    /// 
+    /// [`config`]: ../generator/struct.GenConfig.html
+    /// [`version`]: ../registry/struct.VkVersion.html
+    /// [`write`]: https://doc.rust-lang.org/stable/std/io/trait.Write.html
+    pub fn gen_global<W: Write>(&self, write: &mut W, version: VkVersion, extensions: &[&str], config: GenConfig) {
         let preproc = GenPreproc::new(self, version, extensions, config);
 
         writeln!(write, "{}", include_str!("prelude_common.rs")).unwrap();
@@ -957,7 +1080,31 @@ impl<'a> VkRegistry<'a> {
         writeln!(write, "}}}}").unwrap();
     }
 
-    pub fn gen_struct<W: WriteIo>(&self, write: &mut W, version: VkVersion, extensions: &[&str], config: GenConfig) {
+    /// Write struct bindings for Vulkan API [`version`] \(1.0, 1.1, etc.) to the file [`write`] with 
+    /// the specified `extensions` and [`config`]
+    /// # Examples
+    /// 
+    /// ```no_run
+    /// # extern crate vk_generator;
+    /// # extern crate vk_api;
+    /// # 
+    /// # use vk_generator::{VkRegistry, GenConfig, VkVersion};
+    /// # use std::env;
+    /// # use std::fs::File;
+    /// # use std::path::Path;
+    /// # 
+    /// let out = env::var("OUT_DIR").unwrap();
+    /// let mut file = File::create(&Path::new(&out).join("vk.rs")).unwrap();
+    /// VkRegistry::new(vk_api::VK_XML).gen_struct(&mut file,
+    ///                                            VkVersion(1, 0),
+    ///                                            &[],
+    ///                                            GenConfig::new());
+    /// ```
+    /// 
+    /// [`config`]: ../generator/struct.GenConfig.html
+    /// [`version`]: ../registry/struct.VkVersion.html
+    /// [`write`]: https://doc.rust-lang.org/stable/std/io/trait.Write.html
+    pub fn gen_struct<W: Write>(&self, write: &mut W, version: VkVersion, extensions: &[&str], config: GenConfig) {
         let preproc = GenPreproc::new(self, version, extensions, config);
 
         writeln!(write, "{}", include_str!("prelude_common.rs")).unwrap();

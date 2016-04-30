@@ -18,22 +18,18 @@ macro_rules! vk_struct_bindings {
         }
 
         impl Vk {
-            pub fn load_with<F: FnMut(&str) -> *const ()>(mut load_fn: F) -> Vk {unsafe{
-                use std::{mem, ptr};
-                let mut fn_buf: *const ();
+            pub fn new() -> Vk {unsafe{
+                use std::mem;
                 let mut vk: Vk = mem::uninitialized();
 
                 $(
-                    fn_buf = load_fn($raw_name);
-                    if ptr::null() != fn_buf {
-                        vk.$name = FnPtr{ raw_name: $raw_name, fn_ptr: fn_buf };
-                    }
+                    vk.$name = FnPtr{ raw_name: $raw_name, fn_ptr: unloaded_function_panic as *const ()};
                 )+
 
                 vk
             }}
 
-            pub fn reload_fns<F: FnMut(&str) -> *const ()>(&mut self, mut load_fn: F) -> ::std::result::Result<(), Vec<&'static str>> {
+            pub fn load_with<F: FnMut(&str) -> *const ()>(&mut self, mut load_fn: F) -> ::std::result::Result<(), Vec<&'static str>> {
                 use std::ptr;
                 let mut fn_buf: *const ();
                 let mut unloaded_fns = Vec::new();

@@ -12,6 +12,78 @@ fn null_str() -> *const str {
     unsafe{ mem::transmute([0usize; 2] ) }
 }
 
+/// A struct representation of the Vulkan XML registry. 
+/// 
+/// # Generation
+/// Binding generation is accomplished via the provided `gen_global()` and `gen_struct()` functions. The
+/// generation itself is a multi-step process, which proceeds roughly as follows:
+///
+/// 1. Load everything defined in the Vulkan registry
+/// 2. Determine which functions and types are included in requested version and extensions
+/// 3. Preprocess loaded types and transform their identifiers in a way specified by the 
+///    [`GenConfig`] struct
+/// 4. Generate type bindings with any zero-cost wrappers specified by [`GenConfig`]
+/// 5. Generate function bindings
+///
+/// Because steps 1 through 4 are entirely identical between the two generation functions only the
+/// specifics of step 5 are covered here.
+/// 
+/// # Global Generation
+/// Global bindings are used similarly to any standard global function; once the function pointers 
+/// are loaded they can be called with `vk::{function_name}(...)`. However, in order to load the commands 
+/// one must first call the provided `vk::load_with(FnMut(&str) -> *const ())` function. This has a 
+/// closure as an argument, which must take a string slice and return a function pointer that either 
+/// corresponds to the provided function or is `null` if said function could not be found. Now, it is 
+/// expected that there will be unfound functions due to the very nature of how Vulkan loads functions: 
+/// getting an initial, command-loading function and then generating function pointers from that. Because 
+/// of this, `load_with()` also serves to report any functions that *haven't* been loaded, returning a
+/// `Result<(), Vec<&str>>` with `Err` being returned if not all functions have been loaded and
+/// containing a list of all unloaded functions. `Some` is returned if all commands have been 
+/// loaded. In any case, `load_with()` can be called again in order to attempt to re-load any 
+/// unloaded functions.
+/// 
+/// ```
+/// mod vk {
+///     // include!{concat!(env!("OUT_DIR"), "vk.rs")}
+///   # pub fn load_with<F: FnMut(&str) -> *const ()>(mut load_fn: F) -> ::std::result::Result<(), Vec<&'static str>> {Ok(())}
+/// }
+/// # fn vk_function_loader_example(string: &str) -> *const () {::std::ptr::null()}
+/// 
+/// fn main() {
+///     vk::load_with(|s| vk_function_loader_example(s)).ok();
+/// }
+/// ```
+/// 
+/// # Struct Generation
+/// The struct binding generator generates bindings that are methods of a `Vk` struct and don't
+/// load into a global state. Creating the `Vk` struct is done with the `Vk::new()` function; however,
+/// unlike the global function this does not load the functions. Instead they must be loaded with the
+/// `vk.load_with(FnMut(&str) -> *const ())` function, as shown:
+/// 
+/// ```
+/// # mod vk {
+/// #     pub struct Vk {}
+/// #     impl Vk {
+/// #         pub fn new() -> Vk {Vk{}}
+/// #         pub fn load_with<F: FnMut(&str) -> *const ()>(&mut self, mut load_fn: F) -> Result<(), Vec<&'static str>> {Ok(())}
+/// #     }
+/// # }
+/// # fn vk_function_loader_example(string: &str) -> *const () {::std::ptr::null()}
+/// fn main() {
+///     let mut vk = vk::Vk::new();
+///     
+///     vk.load_with(|s| vk_function_loader_example(s)).ok();
+///     
+///     // Remove mutability from `vk`
+///     let vk = vk;
+/// }
+/// ```
+/// 
+/// Like the global generator, `vk.load_with()` returns a result containing either nothing or a list
+/// of all unloaded functions. Successive calls to `load_with()` reload any functions that the
+/// loading function returns a non-`null` pointer to.
+///
+/// [`GenConfig`]: ../generator/struct.GenConfig.html
 pub struct VkRegistry<'a> {
     string_buffer: String,
     types: HashMap<&'a str, VkType>,
@@ -22,6 +94,10 @@ pub struct VkRegistry<'a> {
 }
 
 impl<'a> VkRegistry<'a> {
+    /// Create a new registry based off of the supplied xml file. Said xml should be sourced from the
+    /// [`vk_api`] crate, and can be based off of any version of the API.
+    /// 
+    /// [`vk_api`]: ../../vk_api/index.html
     pub fn new(vk_xml: &[u8]) -> VkRegistry<'a> {
         let mut registry = VkRegistry {
             string_buffer: String::with_capacity(vk_xml.len()),
