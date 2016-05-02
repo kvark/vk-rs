@@ -3,7 +3,7 @@ This repository contiains the necessary starting blocks for building a wrapper a
 API. 
 
 
-## vk_generator [![Version](https://img.shields.io/crates/v/vk_generator.svg)](https://crates.io/crates/vk_generator)
+## [vk_generator](./vk_generator) [![Version](https://img.shields.io/crates/v/vk_generator.svg)](https://crates.io/crates/vk_generator)
 Generate bindings to the Vulkan API.
 
 ```toml
@@ -12,7 +12,7 @@ vk_generator = "0.1.0"
 ```
 
 
-## vk_api [![Version](https://img.shields.io/crates/v/vk_api.svg)](https://crates.io/crates/vk_api)
+## [vk_api](./vk_api) [![Version](https://img.shields.io/crates/v/vk_api.svg)](https://crates.io/crates/vk_api)
 The Vulkan Registry exposed as the bytestring `vk_api::VK_XML`.
 
 ```toml
