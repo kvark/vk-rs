@@ -3,6 +3,11 @@
 //! generation functions ([`gen_global()`] or [`gen_struct()`]) or a custom one. Further
 //! documentation can be found in [`VkRegistry`] and [`GenConfig`], and looking over the provided
 //! [examples](https://github.com/Osspial/vk-rs/tree/master/vk_generator/examples) is encouraged.
+//! 
+//! [`VkRegistry`]: ./struct.VkRegistry.html
+//! [`GenConfig`]: ./struct.GenConfig.html
+//! [`gen_global()`]: ./struct.VkRegistry.html#method.gen_global
+//! [`gen_struct()`]: ./struct.VkRegistry.html#method.gen_struct
 
 extern crate xml;
 extern crate boolinator;
