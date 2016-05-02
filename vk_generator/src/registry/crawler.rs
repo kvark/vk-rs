@@ -36,15 +36,15 @@ pub fn crawl<R: Read>(xml_events: Events<R>, registry: &mut VkRegistry) {
 
             XmlEvent::EndElement{..} => {
                 // We don't have to go through the entire element stack - only the elements that have changed since 
-                // the last access
+                // the last access. Also, we only have to process the stack when an element is about to be removed.
                 for el in &vk_elements[popped_to..] {
-                    use super::tdvalid::*;
                     match *el {
                         // This branch handles the various tags present in the vulkan xml file. Because each tag is only    |
                         // seen once, when it's pushed onto vk_elements, we don't have to have any checking inside to make  |
                         // sure we aren't looking at a duplicate tag.                                                       |
                         Tag{name: ref tag_name, attributes: ref tag_attrs} => 
                             match &tag_name[..] {
+                                // Handle enum registration
                                 "enums"      => 
                                     if let Some(name) = find_attribute(tag_attrs, "name") {
                                         cur_block = VkBlock::Enums;
@@ -86,6 +86,8 @@ pub fn crawl<R: Read>(xml_events: Events<R>, registry: &mut VkRegistry) {
                                         }
                                     } else {panic!("Could not find enum variant name")},
 
+
+                                // Handle type (struct, union, typedef, etc.) registration
                                 "types"      => cur_block = VkBlock::Types,
                                 "type"
                                     if VkBlock::Types == cur_block =>
@@ -117,6 +119,7 @@ pub fn crawl<R: Read>(xml_events: Events<R>, registry: &mut VkRegistry) {
                                             type_buffer = VkType::new_extern(name, requires);
                                         } else {panic!("Expected external type name; found nothing")}
                                     },
+                                // Members of structs and unions
                                 "member"
                                     if VkBlock::Types == cur_block =>
                                     match type_buffer {
@@ -129,6 +132,8 @@ pub fn crawl<R: Read>(xml_events: Events<R>, registry: &mut VkRegistry) {
                                     },
                                 "member"     => panic!("\"member\" tag found outside of \"types\" block"),
 
+
+                                // Register commands. Most of the relevant code is in the `Characters` blocks
                                 "commands"   => cur_block = VkBlock::Commands,
                                 "command"
                                     if VkBlock::Commands == cur_block => {
@@ -138,6 +143,8 @@ pub fn crawl<R: Read>(xml_events: Events<R>, registry: &mut VkRegistry) {
                                 "param"
                                     if VkBlock::Commands == cur_block => command_buffer.as_mut().unwrap().params.push(VkParam::empty()),
 
+
+                                // Register features. Features are the function/type declarations for the specific API version.
                                 "feature"    => 
                                     if let Some(name) = find_attribute(tag_attrs, "name") {
                                         if let Some(version) = find_attribute(tag_attrs, "number") {
@@ -168,6 +175,8 @@ pub fn crawl<R: Read>(xml_events: Events<R>, registry: &mut VkRegistry) {
                                         feature_buffer.as_mut().unwrap().push_type(registry.append_str(name), &interface_reqrem);
                                     } else {panic!("Could not find feature name")},
 
+
+                                // Register extensions.
                                 "extensions" => cur_block = VkBlock::Extensions,
                                 "extension"
                                     if VkBlock::Extensions == cur_block =>
@@ -244,7 +253,7 @@ pub fn crawl<R: Read>(xml_events: Events<R>, registry: &mut VkRegistry) {
                                         "type"   => member.field_type.set_type(registry.append_str(chars)),
                                         "name"   =>
                                             // This exists as an `if let` block and isn't just `member.set_name(registry.append_str(chars))`    |
-                                            // because some dumbass decided to have two fields in the entire vulkan xml contain the array size  |
+                                            // because someone decided to have two fields in the entire vulkan xml contain the array size       |
                                             // *inside* of the <name> tag. This is terribly inconvenient, and now I have to document exactly    |
                                             // what is means and why it exists.                                                                 |
                                             //                                                                                                  |
@@ -262,26 +271,24 @@ pub fn crawl<R: Read>(xml_events: Events<R>, registry: &mut VkRegistry) {
                                     }
                                 }
                                 VkType::TypeDef{ref mut typ, 
-                                                ref mut name, 
-                                                ref mut validity, ..} =>
+                                                ref mut name, ..} =>
                                     match tag {
                                         "type" =>
-                                            match chars {
-                                                "typedef" => *validity ^= NOTYPEDEF,
-                                                ";"       => *validity ^= NOSEMICOLON,
-                                                _         => *typ = registry.append_str(chars)
+                                            if "typedef" != chars ||
+                                               ";"       != chars {
+                                                *typ = registry.append_str(chars)
                                             },
                                         "name" => *name = registry.append_str(chars),
                                         _ => panic!("Unexpected tag")
                                     },
                                 VkType::Handle{ref mut name, 
-                                               ref mut validity, 
                                                ref mut dispatchable} =>
                                     match tag {
                                         "type" =>
                                             match chars {
-                                                "VK_DEFINE_HANDLE"                  =>  *validity = true,
-                                                "VK_DEFINE_NON_DISPATCHABLE_HANDLE" => {*validity = true; *dispatchable = false}
+                                                // Dispatchable defaults to true
+                                                "VK_DEFINE_HANDLE"                  =>  (),
+                                                "VK_DEFINE_NON_DISPATCHABLE_HANDLE" => *dispatchable = false,
                                                 "("                                  |
                                                 ")"                                 => (),
                                                 _                                   => panic!("Unexpected handle")
@@ -356,6 +363,7 @@ pub fn crawl<R: Read>(xml_events: Events<R>, registry: &mut VkRegistry) {
                             }
                         }
 
+                        // Perform character processing for commands
                         Characters{ref chars, tags: (tag, Some(tag1))}
                             if VkBlock::Commands == cur_block &&
                                "usage" != tag => {
@@ -413,91 +421,6 @@ pub fn crawl<R: Read>(xml_events: Events<R>, registry: &mut VkRegistry) {
     registry.push_command(command_buffer).ok();
     registry.push_feature(feature_buffer).ok();
     registry.push_extn(extn_buffer).ok();
-
-    // unsafe{
-    //     for t in &registry.types {
-    //         match *t.1 {
-    //             VkType::Struct{name, ref fields}  => {
-    //                 println!("Struct {:?}", &*name);
-    //                 for f in fields {
-    //                     println!("\t{:?}", f);
-    //                 }
-    //             }
-
-    //             VkType::Union{name, ref variants} => {
-    //                 println!("Union {:?}", &*name);
-    //                 for v in variants {
-    //                     println!("\t{:?}", v);
-    //                 }
-    //             }
-
-    //             VkType::Enum{name, ref variants} => {
-    //                 println!("Enum {:?}", &*name);
-    //                 for v in variants {
-    //                     println!("\t{:?}", v);
-    //                 }
-    //             }
-
-    //             VkType::Bitmask{name, ref variants} => {
-    //                 println!("Bitmask {:?}", &*name);
-    //                 for v in variants {
-    //                     println!("\t{:?}", v);
-    //                 }
-    //             }
-
-    //             VkType::TypeDef{typ, name, validity, ..} =>
-    //                 if validity != 0 {
-    //                     panic!("Invalid typedef")
-    //                 } else {
-    //                     println!("TypeDef {:?} {:?}", &*typ, &*name)
-    //                 },
-
-    //             VkType::Handle{name, validity, dispatchable} =>
-    //                 if !validity {
-    //                     panic!("Invalid handle")
-    //                 } else if dispatchable {
-    //                     println!("Handle {:?}", &*name)
-    //                 } else {
-    //                     println!("Non-Dispatchable Handle {:?}", &*name)
-    //                 },
-
-    //             VkType::ApiConst{name, value} =>
-    //                 println!("API Const: {} {}", &*name, &*value),
-
-    //             VkType::Define{name}      => println!("Define {:?}", &*name),
-    //             VkType::FuncPointer{name, ref params} => println!("FuncPointer {:?} {:?}", &*name, params),
-    //             VkType::ExternType{name, requires}  => println!("ExternType {:?} {:?}", &*name, &*requires),
-
-    //             _ => ()
-    //         }
-    //     }
-
-    //     for c in &registry.commands {
-    //         println!("{:#?}", c.1);
-    //     }
-
-    //     for f in &registry.features {
-    //         println!("Feature: {:?}", &*f.1.name);
-    //         for req in &f.1.require {
-    //             println!("\tRequire: {:?}", req);
-    //         }
-
-    //         for rem in &f.1.remove {
-    //             println!("\tRemove: {:?}", rem);
-    //         }
-    //     }
-
-    //     for e in &registry.extns {
-    //         println!("Extension: {:?}", &*e.1.name);
-    //         for req in &e.1.require {
-    //             println!("\tRequire: {:?}", req);
-    //         }
-
-    //         for rem in &e.1.remove {
-    //             println!("\tRemove: {:?}", rem);
-    //         }
-    //     }
-    // }
 }
 
 fn to_number(source: &str) -> Result<isize, ParseIntError> {

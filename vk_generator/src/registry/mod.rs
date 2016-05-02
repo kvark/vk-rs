@@ -83,7 +83,7 @@ fn null_str() -> *const str {
 /// of all unloaded functions. Successive calls to `load_with()` reload any functions that the
 /// loading function returns a non-`null` pointer to.
 ///
-/// [`GenConfig`]: ../generator/struct.GenConfig.html
+/// [`GenConfig`]: ./struct.GenConfig.html
 pub struct VkRegistry<'a> {
     string_buffer: String,
     types: HashMap<&'a str, VkType>,
@@ -224,6 +224,7 @@ pub enum VkElType {
 }
 
 impl VkElType {
+    /// Get a pointer to the name of the type, if available.
     pub fn type_ptr(&self) -> Option<*const str> {
         use self::VkElType::*;
         match *self {
@@ -497,7 +498,6 @@ pub enum VkType {
 
     Handle {
         name: *const str,
-        validity: bool,
         dispatchable: bool
     },
 
@@ -508,7 +508,6 @@ pub enum VkType {
         name: *const str,
         /// Optional
         requires: *const str,
-        validity: u8
     },
 
     ApiConst {
@@ -601,18 +600,15 @@ impl VkType {
     pub fn empty_handle() -> VkType {
         VkType::Handle {
             name: null_str(),
-            validity: false,
             dispatchable: true
         }
     }
 
     pub fn new_typedef(requires: Option<*const str>) -> VkType {
-        use self::tdvalid::*;
         VkType::TypeDef {
             typ: null_str(),
             name: null_str(),
             requires: requires.unwrap_or(null_str()),
-            validity: NOSEMICOLON | NOTYPEDEF
         }
     }
 
@@ -649,12 +645,6 @@ impl VkType {
             requires: requires
         }
     }
-}
-
-/// VkType::TypeDef validity flags
-pub mod tdvalid {
-    pub const NOSEMICOLON: u8 = 0b01;
-    pub const NOTYPEDEF: u8   = 0b10;
 }
 
 #[derive(Clone)]

@@ -216,20 +216,26 @@ impl<'a> default::Default for GenConfig<'a> {
     }
 }
 
-struct GenPreproc<'a, 'b> {
-    types: HashMap<&'a str, VkType>,
-    type_ord: Vec<&'a str>,
-    const_types: HashMap<&'a str, ConstType>,
+pub struct GenPreproc<'a, 'b> {
+    pub types: HashMap<&'a str, VkType>,
+    /// The order in which types are loaded. Not technically necessary, but it can be used to guarantee
+    /// that the types are output to the generated file in a constant order.
+    pub type_ord: Vec<&'a str>,
+    /// Possible types for constants that can be easily assumed by the preprocessor. This is not a
+    /// comprehensive list of all constant types, probably won't contain the types of all constants
+    /// defined by the API. Currently, it just tells what types are `usize`. 
+    pub const_types: HashMap<&'a str, ConstType>,
     /// A set of all types that can't have Debug and Clone implementations derived. This occurs when
     /// the type contains an array, and as such can't derive Clone (because arrays only implement Clone
     /// if the types they contain are Copy, which all of the generated types aren't) and Debug.
-    custom_impls: HashSet<&'a str>,
-    commands: Vec<VkCommand>,
+    pub custom_impls: HashSet<&'a str>,
+    pub commands: Vec<VkCommand>,
     /// A vector of the unprocessed command names
-    commands_raw: Vec<&'a str>,
-    registry: &'a VkRegistry<'a>,
-    config: GenConfig<'b>,
-    string_buffer: Option<String>
+    pub commands_raw: Vec<&'a str>,
+    pub registry: &'a VkRegistry<'a>,
+    pub config: GenConfig<'b>,
+    /// An internal buffer that contains all relevant identifier strings
+    pub string_buffer: Option<String>
 }
 
 impl<'a, 'b> GenPreproc<'a, 'b> {
@@ -641,7 +647,7 @@ macro_rules! gen_func_param {
     }
 }
 
-struct GenTypes<'a> {
+pub struct GenTypes<'a> {
     config:       &'a GenConfig<'a>,
     structs:      String,
     unions:       String,
@@ -655,7 +661,8 @@ struct GenTypes<'a> {
 }
 
 impl<'a> GenTypes<'a> {
-    fn new(processed: &'a GenPreproc) -> GenTypes<'a> {
+    /// Generate type definitions. Assumes presence of `./prelude_common.rs`.
+    pub fn new(processed: &'a GenPreproc) -> GenTypes<'a> {
         let mut gen_types = GenTypes {
             config:       &processed.config,
             structs:      String::with_capacity(2usize.pow(17)),
@@ -669,12 +676,14 @@ impl<'a> GenTypes<'a> {
             externs:      String::with_capacity(2usize.pow(10))
         };
 
+        // Iterate over the types in an order defined by which types were loaded first
         for t in processed.type_ord.iter().map(|k| processed.types.get(k).unwrap()) {
             use registry::VkType::*;
             use registry::VkElType::*;
             use registry::VkVariant::*;
 
             match *t {
+                // Generate struct bindings
                 Struct{name, ref fields} => {
                     let name = unsafe{ &*name };
                     let structs = &mut gen_types.structs;
@@ -778,6 +787,7 @@ impl<'a> GenTypes<'a> {
                     } else {panic!("Unexpected Union")}.unwrap()
                 },
 
+                // Generate enum bindings
                 Enum{name, ref variants} => {
                     let enums = &mut gen_types.enums;
                     let name = unsafe{ &*name };
@@ -793,6 +803,7 @@ impl<'a> GenTypes<'a> {
                     enums.push_str("}\n\n");
                 }
 
+                // Generate bitmasks
                 Bitmask{name, ref variants} => {
                     let bitmasks = &mut gen_types.bitmasks;
                     let name = unsafe{ &*name };
@@ -827,6 +838,7 @@ impl<'a> GenTypes<'a> {
                     }
                 }
 
+                // Generate handles
                 Handle{name, dispatchable, ..} => {
                     let handles = &mut gen_types.handles;
                     let name = unsafe{ &*name };
@@ -837,13 +849,17 @@ impl<'a> GenTypes<'a> {
                     }
                 }
 
+                // Generate typedefs
                 TypeDef{name, typ, requires, ..} => {
                     let (name, typ, requires) = unsafe{ (&*name, &*typ, to_option(requires)) };
+                    // If we're typedef-ing a flag and the flag bit types aren't defined, generate the raw typedef. Otherwise,
+                    // the typedef is handled in the `Bitmask` section of this generator.
                     if (typ != "Flags" && typ != "VkFlags") || requires == None {
                         writeln!(gen_types.typedefs, "pub type {} = {};", name, typ).unwrap();
                     }
                 }
 
+                // Generate API constants, inferring the type. 
                 ApiConst{name, value} => {
                     use self::ConstType::*;
 
@@ -884,7 +900,7 @@ impl<'a> GenTypes<'a> {
                         USize     => write!(consts, "pub const {}: size_t = ", name),
                         Float     => writeln!(consts, "pub const {}: c_float = {};", name, sliced_value),
                         Str       => writeln!(consts, "pub const {}: &'static str = {};", name, sliced_value),
-                        Unknown   => panic!("Unknown const class")
+                        Unknown   => panic!("Unknown const type")
                     }.unwrap();
 
                     match typ {
@@ -899,6 +915,7 @@ impl<'a> GenTypes<'a> {
                     }
                 }
 
+                // Generate external types
                 ExternType{name, requires} => {
                     let externs = &mut gen_types.externs;
                     let (name, requires) = unsafe{ (&*name, &*requires) };
@@ -953,6 +970,7 @@ impl<'a> GenTypes<'a> {
                     }
                 }
 
+                // Generate function pointers.
                 FuncPointer{name, ref ret, ref params} => {
                     let funcpointers = &mut gen_types.funcpointers;
                     writeln!(funcpointers, "pub type {} = unsafe extern \"system\" fn(", unsafe{ &*name }).unwrap();
@@ -990,7 +1008,7 @@ impl<'a> GenTypes<'a> {
         gen_types
     }
 
-    fn write_types<W: Write>(&self, write: &mut W) {
+    pub fn write_types<W: Write>(&self, write: &mut W) {
         writeln!(write, "{}", include_str!("defines.rs")).unwrap();
         writeln!(write, "pub mod types {{").unwrap();
         writeln!(write, "#![allow(non_camel_case_types, dead_code)]").unwrap();
@@ -1012,8 +1030,9 @@ impl<'a> GenTypes<'a> {
     }
 }
 
+/// What type a constant is inferred to be
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-enum ConstType {
+pub enum ConstType {
     /// A floating-point number
     Float,
     /// An unsigned integer
@@ -1048,8 +1067,8 @@ impl<'a> VkRegistry<'a> {
     ///                                            GenConfig::new());
     /// ```
     /// 
-    /// [`config`]: ../generator/struct.GenConfig.html
-    /// [`version`]: ../registry/struct.VkVersion.html
+    /// [`config`]: ./struct.GenConfig.html
+    /// [`version`]: ./struct.VkVersion.html
     /// [`write`]: https://doc.rust-lang.org/stable/std/io/trait.Write.html
     pub fn gen_global<W: Write>(&self, write: &mut W, version: VkVersion, extensions: &[&str], config: GenConfig) {
         let preproc = GenPreproc::new(self, version, extensions, config);
@@ -1101,8 +1120,8 @@ impl<'a> VkRegistry<'a> {
     ///                                            GenConfig::new());
     /// ```
     /// 
-    /// [`config`]: ../generator/struct.GenConfig.html
-    /// [`version`]: ../registry/struct.VkVersion.html
+    /// [`config`]: ./struct.GenConfig.html
+    /// [`version`]: ./struct.VkVersion.html
     /// [`write`]: https://doc.rust-lang.org/stable/std/io/trait.Write.html
     pub fn gen_struct<W: Write>(&self, write: &mut W, version: VkVersion, extensions: &[&str], config: GenConfig) {
         let preproc = GenPreproc::new(self, version, extensions, config);

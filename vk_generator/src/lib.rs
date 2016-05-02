@@ -1,10 +1,23 @@
+//! Automatically generates bindings for the Vulkan API. In order to use, first create a 
+//! [`VkRegistry`] struct with a valid Vulkan XML file, and then call either one of the two
+//! generation functions ([`gen_global()`] or [`gen_struct()`]) or a custom one. Further
+//! documentation can be found in [`VkRegistry`] and [`GenConfig`], and looking over the provided
+//! [examples](https://github.com/Osspial/vk-rs/tree/master/vk_generator/examples) is encouraged.
+
 extern crate xml;
 extern crate boolinator;
 
 use std::mem;
 
+#[cfg(feature = "unstable_generator_api")]
 pub mod registry;
+#[cfg(feature = "unstable_generator_api")]
 pub mod generator;
+
+#[cfg(not(feature = "unstable_generator_api"))]
+mod registry;
+#[cfg(not(feature = "unstable_generator_api"))]
+mod generator;
 
 pub use registry::{VkRegistry, VkVersion};
 pub use generator::GenConfig;
