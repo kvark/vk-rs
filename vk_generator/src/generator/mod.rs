@@ -8,6 +8,7 @@ use std::io::Write;
 
 use boolinator::Boolinator;
 
+/// Configuration options fot the Vulkan generator
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct GenConfig<'a> {
     pub remove_type_prefix: bool,
