@@ -5,7 +5,7 @@ use std::path::Path;
 use std::fs::{File, DirBuilder};
 use std::env;
 
-use vk_generator::registry::VkVersion;
+use vk_generator::VkVersion;
 
 
 fn main() {

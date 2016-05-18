@@ -8,7 +8,7 @@ use std::process::Command;
 use std::io::Write;
 use std::str;
 
-use vk_generator::registry::VkVersion;
+use vk_generator::VkVersion;
 
 #[test]
 fn default_global() {
