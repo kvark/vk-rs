@@ -164,7 +164,7 @@ impl<'a> GenConfig<'a> {
     /// to `type HWND = *const ()`, which isn't what HWNDs are defined as in `winapi`. So we call this:
     ///
     /// ```
-    /// # use vk_generator::generator::GenConfig;
+    /// # use vk_generator::GenConfig;
     /// GenConfig::new()
     ///     .extern_type_overrides(&[("HWND", "winapi::HWND"),
     ///                              ("HINSTANCE", "winapi::HINSTANCE")]);
@@ -1052,8 +1052,10 @@ impl<'a> VkRegistry<'a> {
     /// # Examples
     /// 
     /// ```no_run
-    /// # extern crate vk_generator;
-    /// # extern crate vk_api;
+    /// # // external crate declarations seems to break the code, so this is a workaround that probably won't ever be replaced.
+    /// # mod vk_api {
+    /// #     pub const VK_XML: &'static [u8] = &[0];
+    /// # }
     /// # 
     /// # use vk_generator::{VkRegistry, GenConfig, VkVersion};
     /// # use std::env;
@@ -1105,8 +1107,10 @@ impl<'a> VkRegistry<'a> {
     /// # Examples
     /// 
     /// ```no_run
-    /// # extern crate vk_generator;
-    /// # extern crate vk_api;
+    /// # // Ditto.
+    /// # mod vk_api {
+    /// #     pub const VK_XML: &'static [u8] = &[0];
+    /// # }
     /// # 
     /// # use vk_generator::{VkRegistry, GenConfig, VkVersion};
     /// # use std::env;
