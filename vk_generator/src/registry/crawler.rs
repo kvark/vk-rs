@@ -274,7 +274,7 @@ pub fn crawl<R: Read>(xml_events: Events<R>, registry: &mut VkRegistry) {
                                                 ref mut name, ..} =>
                                     match tag {
                                         "type" =>
-                                            if "typedef" != chars ||
+                                            if "typedef" != chars &&
                                                ";"       != chars {
                                                 *typ = registry.append_str(chars)
                                             },
