@@ -893,15 +893,22 @@ impl<'a> GenTypes<'a> {
                         }
                     }
 
+                    if typ == Unknown &&
+                       &name[0..3]  == "VK_" &&
+                       &value[0..3] == "VK_" {
+                        typ = LegacyEnum;
+                    }
+
                     let sliced_value = &value[slice_indices.0..slice_indices.1];
                     match typ {
-                        Unsigned  => write!(consts, "pub const {}: uint32_t = ", name),
-                        ULong     => write!(consts, "pub const {}: c_ulong = ", name),
-                        ULongLong => write!(consts, "pub const {}: c_ulonglong =", name),
-                        USize     => write!(consts, "pub const {}: size_t = ", name),
-                        Float     => writeln!(consts, "pub const {}: c_float = {};", name, sliced_value),
-                        Str       => writeln!(consts, "pub const {}: &'static str = {};", name, sliced_value),
-                        Unknown   => panic!("Unknown const type")
+                        Unsigned   => write!(consts, "pub const {}: uint32_t = ", name),
+                        ULong      => write!(consts, "pub const {}: c_ulong = ", name),
+                        ULongLong  => write!(consts, "pub const {}: c_ulonglong =", name),
+                        USize      => write!(consts, "pub const {}: size_t = ", name),
+                        Float      => writeln!(consts, "pub const {}: c_float = {};", name, sliced_value),
+                        Str        => writeln!(consts, "pub const {}: &'static str = {};", name, sliced_value),
+                        LegacyEnum => Ok(()),
+                        Unknown    => panic!("Unknown const type")
                     }.unwrap();
 
                     match typ {
@@ -1043,6 +1050,8 @@ pub enum ConstType {
     USize,
     /// A string
     Str,
+    /// An enum variant that was renamed in the Vulkan specs. The default generators ignore these.
+    LegacyEnum,
     Unknown
 }
 
