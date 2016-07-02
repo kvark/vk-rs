@@ -1,0 +1,1 @@
+initSidebarItems({"struct":[["VkRegistry","A struct representation of the Vulkan XML registry."],["VkVersion",""]]});

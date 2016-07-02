@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="generator" content="rustdoc">
+    <meta name="description" content="API documentation for the Rust `GenConfig` struct in crate `vk_generator`.">
+    <meta name="keywords" content="rust, rustlang, rust-lang, GenConfig">
+
+    <title>vk_generator::GenConfig - Rust</title>
+
+    <link rel="stylesheet" type="text/css" href="../rustdoc.css">
+    <link rel="stylesheet" type="text/css" href="../main.css">
+    
+
+    
+    
+</head>
+<body class="rustdoc">
+    <!--[if lte IE 8]>
+    <div class="warning">
+        This old browser is unsupported and will most likely display funky
+        things.
+    </div>
+    <![endif]-->
+
+    
+
+    <nav class="sidebar">
+        
+        <p class='location'><a href='index.html'>vk_generator</a></p><script>window.sidebarCurrent = {name: 'GenConfig', ty: 'struct', relpath: ''};</script><script defer src="sidebar-items.js"></script>
+    </nav>
+
+    <nav class="sub">
+        <form class="search-form js-only">
+            <div class="search-container">
+                <input class="search-input" name="search"
+                       autocomplete="off"
+                       placeholder="Click or press ‘S’ to search, ‘?’ for more options…"
+                       type="search">
+            </div>
+        </form>
+    </nav>
+
+    <section id='main' class="content struct">
+<h1 class='fqn'><span class='in-band'>Struct <a href='index.html'>vk_generator</a>::<wbr><a class='struct' href=''>GenConfig</a></span><span class='out-of-band'><span id='render-detail'>
+                   <a id="toggle-all-docs" href="javascript:void(0)" title="collapse all docs">
+                       [<span class='inner'>&#x2212;</span>]
+                   </a>
+               </span><a id='src-974' class='srclink' href='../src/vk_generator/src/generator/mod.rs.html#13-27' title='goto source code'>[src]</a></span></h1>
+<pre class='rust struct'>pub struct GenConfig&lt;'a&gt; {
+    pub remove_type_prefix: <a class='primitive' href='https://doc.rust-lang.org/nightly/std/primitive.bool.html'>bool</a>,
+    pub remove_vk_result_prefix: <a class='primitive' href='https://doc.rust-lang.org/nightly/std/primitive.bool.html'>bool</a>,
+    pub remove_command_prefix: <a class='primitive' href='https://doc.rust-lang.org/nightly/std/primitive.bool.html'>bool</a>,
+    pub remove_variant_padding: <a class='primitive' href='https://doc.rust-lang.org/nightly/std/primitive.bool.html'>bool</a>,
+    pub remove_bitmask_prefix: <a class='primitive' href='https://doc.rust-lang.org/nightly/std/primitive.bool.html'>bool</a>,
+    pub snake_case_commands: <a class='primitive' href='https://doc.rust-lang.org/nightly/std/primitive.bool.html'>bool</a>,
+    pub camel_case_variants: <a class='primitive' href='https://doc.rust-lang.org/nightly/std/primitive.bool.html'>bool</a>,
+    pub snake_case_members: <a class='primitive' href='https://doc.rust-lang.org/nightly/std/primitive.bool.html'>bool</a>,
+    pub debug_c_strings: <a class='primitive' href='https://doc.rust-lang.org/nightly/std/primitive.bool.html'>bool</a>,
+    pub wrap_bitmasks: <a class='primitive' href='https://doc.rust-lang.org/nightly/std/primitive.bool.html'>bool</a>,
+    pub use_libc_types: <a class='primitive' href='https://doc.rust-lang.org/nightly/std/primitive.bool.html'>bool</a>,
+    pub extern_type_overrides: <a class='primitive' href='https://doc.rust-lang.org/nightly/std/primitive.slice.html'>&amp;'a [</a><a class='primitive' href='https://doc.rust-lang.org/nightly/std/primitive.tuple.html'>(</a>&amp;'a <a class='primitive' href='https://doc.rust-lang.org/nightly/std/primitive.str.html'>str</a>, &amp;'a <a class='primitive' href='https://doc.rust-lang.org/nightly/std/primitive.str.html'>str</a><a class='primitive' href='https://doc.rust-lang.org/nightly/std/primitive.tuple.html'>)</a><a class='primitive' href='https://doc.rust-lang.org/nightly/std/primitive.slice.html'>]</a>,
+}</pre><div class='docblock'><p>Configuration options fot the Vulkan generator</p>
+</div><h2 class='fields'>Fields</h2>
+<table><tr class='stab '>
+                             <td id='structfield.remove_type_prefix'><code>remove_type_prefix</code></td><td></td></tr><tr class='stab '>
+                             <td id='structfield.remove_vk_result_prefix'><code>remove_vk_result_prefix</code></td><td></td></tr><tr class='stab '>
+                             <td id='structfield.remove_command_prefix'><code>remove_command_prefix</code></td><td></td></tr><tr class='stab '>
+                             <td id='structfield.remove_variant_padding'><code>remove_variant_padding</code></td><td></td></tr><tr class='stab '>
+                             <td id='structfield.remove_bitmask_prefix'><code>remove_bitmask_prefix</code></td><td></td></tr><tr class='stab '>
+                             <td id='structfield.snake_case_commands'><code>snake_case_commands</code></td><td></td></tr><tr class='stab '>
+                             <td id='structfield.camel_case_variants'><code>camel_case_variants</code></td><td></td></tr><tr class='stab '>
+                             <td id='structfield.snake_case_members'><code>snake_case_members</code></td><td></td></tr><tr class='stab '>
+                             <td id='structfield.debug_c_strings'><code>debug_c_strings</code></td><td></td></tr><tr class='stab '>
+                             <td id='structfield.wrap_bitmasks'><code>wrap_bitmasks</code></td><td></td></tr><tr class='stab '>
+                             <td id='structfield.use_libc_types'><code>use_libc_types</code></td><td></td></tr><tr class='stab '>
+                             <td id='structfield.extern_type_overrides'><code>extern_type_overrides</code></td><td></td></tr></table><h2 id='methods'>Methods</h2><h3 class='impl'><code>impl&lt;'a&gt; <a class='struct' href='../vk_generator/struct.GenConfig.html' title='vk_generator::GenConfig'>GenConfig</a>&lt;'a&gt;</code></h3><div class='impl-items'><h4 id='method.new' class='method'><code>fn <a href='#method.new' class='fnname'>new</a>() -&gt; <a class='struct' href='../vk_generator/struct.GenConfig.html' title='vk_generator::GenConfig'>GenConfig</a>&lt;'a&gt;</code></h4>
+<div class='docblock'><p>Create a new generator config. Is identical to <code>Default::default()</code>.</p>
+</div><h4 id='method.remove_type_prefix' class='method'><code>fn <a href='#method.remove_type_prefix' class='fnname'>remove_type_prefix</a>(self, remove_type_prefix: <a class='primitive' href='https://doc.rust-lang.org/nightly/std/primitive.bool.html'>bool</a>) -&gt; <a class='struct' href='../vk_generator/struct.GenConfig.html' title='vk_generator::GenConfig'>GenConfig</a>&lt;'a&gt;</code></h4>
+<div class='docblock'><p>Whether or not to remove the <code>Vk</code> prefix on structs, enums, and typedefs.</p>
+
+<p>As an example, take the struct <code>VkInstanceCreateInfo</code>. If this is set to <code>true</code>, the generator
+will turn that into <code>InstanceCreateInfo</code>.</p>
+
+<p>Defaults to <code>false</code>.</p>
+</div><h4 id='method.remove_vk_result_prefix' class='method'><code>fn <a href='#method.remove_vk_result_prefix' class='fnname'>remove_vk_result_prefix</a>(self, remove_vk_result_prefix: <a class='primitive' href='https://doc.rust-lang.org/nightly/std/primitive.bool.html'>bool</a>) -&gt; <a class='struct' href='../vk_generator/struct.GenConfig.html' title='vk_generator::GenConfig'>GenConfig</a>&lt;'a&gt;</code></h4>
+<div class='docblock'><p>Whether or not to remove the <code>Vk</code> prefix from the <code>VkResult</code> enum, <strong>IF AND ONLY IF</strong>
+remove_type_prefix is also set to <code>true</code>. This flag exists primarily because Rust already
+contains a type named <code>Result</code> and one might desire to remove any ambiguity the <code>VkResult</code> type
+may cause.</p>
+
+<p>Defaults to <code>true</code>.</p>
+</div><h4 id='method.remove_command_prefix' class='method'><code>fn <a href='#method.remove_command_prefix' class='fnname'>remove_command_prefix</a>(self, remove_command_prefix: <a class='primitive' href='https://doc.rust-lang.org/nightly/std/primitive.bool.html'>bool</a>) -&gt; <a class='struct' href='../vk_generator/struct.GenConfig.html' title='vk_generator::GenConfig'>GenConfig</a>&lt;'a&gt;</code></h4>
+<div class='docblock'><p>Whether or not to remove the <code>vk</code> prefix from Vulkan commands.</p>
+
+<p>For example, if we have the command <code>vkCreateInstance</code> setting this flag to <code>true</code> will turn
+that into <code>createInstance</code>.</p>
+
+<p>Defaults to <code>true</code>.</p>
+</div><h4 id='method.remove_variant_padding' class='method'><code>fn <a href='#method.remove_variant_padding' class='fnname'>remove_variant_padding</a>(self, remove_variant_padding: <a class='primitive' href='https://doc.rust-lang.org/nightly/std/primitive.bool.html'>bool</a>) -&gt; <a class='struct' href='../vk_generator/struct.GenConfig.html' title='vk_generator::GenConfig'>GenConfig</a>&lt;'a&gt;</code></h4>
+<div class='docblock'><p>Whether or not to remove the padding from enum variants.</p>
+
+<p>For example, the Vulkan xml registry defines the enum <code>VkPresentModeKHR</code>, with a variant
+<code>VK_PRESENT_MODE_IMMEDIATE_KHR</code>. If this is <code>true</code>, <code>VK_PRSESNT_MODE_</code> and <code>_KHR</code> will be will 
+be removed from start and end respectively, resulting in the variant name <code>IMMEDIATE</code>. If the
+variant does not have a suffix this will only remove the prefix.</p>
+
+<p>Defaults to <code>true</code>.</p>
+</div><h4 id='method.remove_bitmask_prefix' class='method'><code>fn <a href='#method.remove_bitmask_prefix' class='fnname'>remove_bitmask_prefix</a>(self, remove_bitmask_prefix: <a class='primitive' href='https://doc.rust-lang.org/nightly/std/primitive.bool.html'>bool</a>) -&gt; <a class='struct' href='../vk_generator/struct.GenConfig.html' title='vk_generator::GenConfig'>GenConfig</a>&lt;'a&gt;</code></h4>
+<div class='docblock'><p>Whether or not to remove the <code>VK_</code> prefix from bitmask variants.</p>
+
+<p>For example, the xml registry defines the bitmask <code>VkQueueFlagBits</code> with the flag
+<code>VK_QUEUE_GRAPHICS_BIT</code>. If this is <code>true</code>, this will result in the variant being turned into
+<code>QUEUE_GRAPHICS_BIT</code>.</p>
+
+<p>Defaults to <code>true</code>.</p>
+</div><h4 id='method.snake_case_commands' class='method'><code>fn <a href='#method.snake_case_commands' class='fnname'>snake_case_commands</a>(self, snake_case_commands: <a class='primitive' href='https://doc.rust-lang.org/nightly/std/primitive.bool.html'>bool</a>) -&gt; <a class='struct' href='../vk_generator/struct.GenConfig.html' title='vk_generator::GenConfig'>GenConfig</a>&lt;'a&gt;</code></h4>
+<div class='docblock'><p>Whether or not to transform Vulkan command identifiers to be a Rust-y snake_case.</p>
+
+<p>For example, the registry defines the command <code>vkCreateInstance</code>. If this is <code>true</code>, that
+command will be turned into <code>vk_create_instance</code>. This, and the other name-style-altering
+options, primarily exists for the purpose of having Vulkan code integrate more cleanly into
+native Rust code.</p>
+
+<p>Defaults to <code>true</code>.</p>
+</div><h4 id='method.camel_case_variants' class='method'><code>fn <a href='#method.camel_case_variants' class='fnname'>camel_case_variants</a>(self, camel_case_variants: <a class='primitive' href='https://doc.rust-lang.org/nightly/std/primitive.bool.html'>bool</a>) -&gt; <a class='struct' href='../vk_generator/struct.GenConfig.html' title='vk_generator::GenConfig'>GenConfig</a>&lt;'a&gt;</code></h4>
+<div class='docblock'><p>Whether or not to transform enum variants into CamelCase.</p>
+
+<p>For example, if we look at <code>VkStructureType</code>&#39;s <code>VK_STRUCTURE_TYPE_APPLICATION_INFO</code> setting
+this to <code>true</code> would result in the variant being turned into <code>VkStructureTypeApplicationInfo</code>.</p>
+
+<p>Defaults to <code>true</code>.</p>
+</div><h4 id='method.snake_case_members' class='method'><code>fn <a href='#method.snake_case_members' class='fnname'>snake_case_members</a>(self, snake_case_members: <a class='primitive' href='https://doc.rust-lang.org/nightly/std/primitive.bool.html'>bool</a>) -&gt; <a class='struct' href='../vk_generator/struct.GenConfig.html' title='vk_generator::GenConfig'>GenConfig</a>&lt;'a&gt;</code></h4>
+<div class='docblock'><p>Whether or not to transform struct/union members and command parameters into snake_case.</p>
+
+<p>For example, if we look at the <code>VkApplicationInfo</code> struct&#39;s <code>applicationVersion</code> field, setting
+this to <code>true</code> would result in the field being turned into <code>application_version</code>.</p>
+
+<p>Defaults to <code>true</code>.</p>
+</div><h4 id='method.debug_c_strings' class='method'><code>fn <a href='#method.debug_c_strings' class='fnname'>debug_c_strings</a>(self, debug_c_strings: <a class='primitive' href='https://doc.rust-lang.org/nightly/std/primitive.bool.html'>bool</a>) -&gt; <a class='struct' href='../vk_generator/struct.GenConfig.html' title='vk_generator::GenConfig'>GenConfig</a>&lt;'a&gt;</code></h4>
+<div class='docblock'><p>When printing structs with fields that are arrays of c_chars, whether to print them as arrays
+of bytes or as a string.</p>
+
+<p>Defaults to <code>true</code>.</p>
+</div><h4 id='method.wrap_bitmasks' class='method'><code>fn <a href='#method.wrap_bitmasks' class='fnname'>wrap_bitmasks</a>(self, wrap_bitmasks: <a class='primitive' href='https://doc.rust-lang.org/nightly/std/primitive.bool.html'>bool</a>) -&gt; <a class='struct' href='../vk_generator/struct.GenConfig.html' title='vk_generator::GenConfig'>GenConfig</a>&lt;'a&gt;</code></h4>
+<div class='docblock'><p>Whether or not to wrap bitmasks with a set of convenience functions similar to the
+<a href="https://doc.rust-lang.org/bitflags/bitflags/macro.bitflags!.html">bitflags</a> crate.</p>
+
+<p>Defaults to <code>true</code>.</p>
+</div><h4 id='method.use_libc_types' class='method'><code>fn <a href='#method.use_libc_types' class='fnname'>use_libc_types</a>(self, use_libc_types: <a class='primitive' href='https://doc.rust-lang.org/nightly/std/primitive.bool.html'>bool</a>) -&gt; <a class='struct' href='../vk_generator/struct.GenConfig.html' title='vk_generator::GenConfig'>GenConfig</a>&lt;'a&gt;</code></h4>
+<div class='docblock'><p>The Vulkan library uses a lot of <code>C</code> types, as per it&#39;s nature of exposing a <code>C</code> ABI. There are
+a few ways we can handle using those types: either we can define the typedefs ourself or we can
+use the types provided by <code>libc</code>. Because <code>libc</code> isn&#39;t implicitly included in crates we default
+to defining the types ourself. Setting this to <code>true</code> makes the generated file import types
+from <code>libc</code> instead of defining them itself.</p>
+</div><h4 id='method.extern_type_overrides' class='method'><code>fn <a href='#method.extern_type_overrides' class='fnname'>extern_type_overrides</a>(self, extern_type_overrides: <a class='primitive' href='https://doc.rust-lang.org/nightly/std/primitive.slice.html'>&amp;'a [</a><a class='primitive' href='https://doc.rust-lang.org/nightly/std/primitive.tuple.html'>(</a>&amp;'a <a class='primitive' href='https://doc.rust-lang.org/nightly/std/primitive.str.html'>str</a>, &amp;'a <a class='primitive' href='https://doc.rust-lang.org/nightly/std/primitive.str.html'>str</a><a class='primitive' href='https://doc.rust-lang.org/nightly/std/primitive.tuple.html'>)</a><a class='primitive' href='https://doc.rust-lang.org/nightly/std/primitive.slice.html'>]</a>) -&gt; <a class='struct' href='../vk_generator/struct.GenConfig.html' title='vk_generator::GenConfig'>GenConfig</a>&lt;'a&gt;</code></h4>
+<div class='docblock'><p>This defines a set of type overrides, primarily intended for use with the WSI extensions. It
+takes a slice of (&amp;str, &amp;str) tuples, with the left side being the name of the type and the
+right side being the new definition of the type.</p>
+
+<p>For an example let&#39;s look at the Windows WSI extension, which includes the struct
+<code>VkWin32SurfaceCreateInfoKHR</code>. That struct takes a <code>HWND</code> and a <code>HINSTANCE</code> in order to let Vulkan
+draw to windows; however, the generator is unaware of both <code>HWND</code> and <code>HINSTANCE</code>, which are
+defined in <code>winapi</code>. Because it has no idea what those types should be the generator defaults
+to <code>type HWND = *const ()</code>, which isn&#39;t what HWNDs are defined as in <code>winapi</code>. So we call this:</p>
+
+<pre class='rust rust-example-rendered'>
+<span class='ident'>GenConfig</span>::<span class='ident'>new</span>()
+    .<span class='ident'>extern_type_overrides</span>(<span class='kw-2'>&amp;</span>[(<span class='string'>&quot;HWND&quot;</span>, <span class='string'>&quot;winapi::HWND&quot;</span>),
+                             (<span class='string'>&quot;HINSTANCE&quot;</span>, <span class='string'>&quot;winapi::HINSTANCE&quot;</span>)]);</pre>
+
+<p>This tells the generator to use the <code>winapi</code> defintions of HWND instead of the blind 
+definition, making the generator produce these for the type defintions:</p>
+
+<pre class='rust rust-example-rendered'>
+<span class='kw'>type</span> <span class='ident'>HWND</span> <span class='op'>=</span> <span class='ident'>winapi</span>::<span class='ident'>HWND</span>;
+<span class='kw'>type</span> <span class='ident'>HINSTANCE</span> <span class='op'>=</span> <span class='ident'>winapi</span>::<span class='ident'>HINSTANCE</span>;</pre>
+</div></div><h2 id='implementations'>Trait Implementations</h2><h3 class='impl'><code>impl&lt;'a&gt; <a class='trait' href='https://doc.rust-lang.org/nightly/core/default/trait.Default.html' title='core::default::Default'>Default</a> for <a class='struct' href='../vk_generator/struct.GenConfig.html' title='vk_generator::GenConfig'>GenConfig</a>&lt;'a&gt;</code></h3><div class='impl-items'><h4 id='method.default' class='method'><code>fn <a href='https://doc.rust-lang.org/nightly/core/default/trait.Default.html#tymethod.default' class='fnname'>default</a>() -&gt; <a class='struct' href='../vk_generator/struct.GenConfig.html' title='vk_generator::GenConfig'>GenConfig</a>&lt;'a&gt;</code></h4>
+</div><h3 id='derived_implementations'>Derived Implementations </h3><h3 class='impl'><code>impl&lt;'a&gt; <a class='trait' href='https://doc.rust-lang.org/nightly/core/cmp/trait.Eq.html' title='core::cmp::Eq'>Eq</a> for <a class='struct' href='../vk_generator/struct.GenConfig.html' title='vk_generator::GenConfig'>GenConfig</a>&lt;'a&gt;</code></h3><div class='impl-items'></div><h3 class='impl'><code>impl&lt;'a&gt; <a class='trait' href='https://doc.rust-lang.org/nightly/core/cmp/trait.PartialEq.html' title='core::cmp::PartialEq'>PartialEq</a> for <a class='struct' href='../vk_generator/struct.GenConfig.html' title='vk_generator::GenConfig'>GenConfig</a>&lt;'a&gt;</code></h3><div class='impl-items'><h4 id='method.eq' class='method'><code>fn <a href='https://doc.rust-lang.org/nightly/core/cmp/trait.PartialEq.html#tymethod.eq' class='fnname'>eq</a>(&amp;self, __arg_0: &amp;<a class='struct' href='../vk_generator/struct.GenConfig.html' title='vk_generator::GenConfig'>GenConfig</a>&lt;'a&gt;) -&gt; <a class='primitive' href='https://doc.rust-lang.org/nightly/std/primitive.bool.html'>bool</a></code></h4>
+<h4 id='method.ne' class='method'><code>fn <a href='https://doc.rust-lang.org/nightly/core/cmp/trait.PartialEq.html#method.ne' class='fnname'>ne</a>(&amp;self, __arg_0: &amp;<a class='struct' href='../vk_generator/struct.GenConfig.html' title='vk_generator::GenConfig'>GenConfig</a>&lt;'a&gt;) -&gt; <a class='primitive' href='https://doc.rust-lang.org/nightly/std/primitive.bool.html'>bool</a></code></h4>
+</div><h3 class='impl'><code>impl&lt;'a&gt; <a class='trait' href='https://doc.rust-lang.org/nightly/core/marker/trait.Copy.html' title='core::marker::Copy'>Copy</a> for <a class='struct' href='../vk_generator/struct.GenConfig.html' title='vk_generator::GenConfig'>GenConfig</a>&lt;'a&gt;</code></h3><div class='impl-items'></div><h3 class='impl'><code>impl&lt;'a&gt; <a class='trait' href='https://doc.rust-lang.org/nightly/core/clone/trait.Clone.html' title='core::clone::Clone'>Clone</a> for <a class='struct' href='../vk_generator/struct.GenConfig.html' title='vk_generator::GenConfig'>GenConfig</a>&lt;'a&gt;</code></h3><div class='impl-items'><h4 id='method.clone' class='method'><code>fn <a href='https://doc.rust-lang.org/nightly/core/clone/trait.Clone.html#tymethod.clone' class='fnname'>clone</a>(&amp;self) -&gt; <a class='struct' href='../vk_generator/struct.GenConfig.html' title='vk_generator::GenConfig'>GenConfig</a>&lt;'a&gt;</code></h4>
+<h4 id='method.clone_from' class='method'><span class="since">1.0.0</span><code>fn <a href='https://doc.rust-lang.org/nightly/core/clone/trait.Clone.html#method.clone_from' class='fnname'>clone_from</a>(&amp;mut self, source: &amp;Self)</code></h4>
+</div><h3 class='impl'><code>impl&lt;'a&gt; <a class='trait' href='https://doc.rust-lang.org/nightly/core/fmt/trait.Debug.html' title='core::fmt::Debug'>Debug</a> for <a class='struct' href='../vk_generator/struct.GenConfig.html' title='vk_generator::GenConfig'>GenConfig</a>&lt;'a&gt;</code></h3><div class='impl-items'><h4 id='method.fmt' class='method'><code>fn <a href='https://doc.rust-lang.org/nightly/core/fmt/trait.Debug.html#tymethod.fmt' class='fnname'>fmt</a>(&amp;self, __arg_0: &amp;mut <a class='struct' href='https://doc.rust-lang.org/nightly/core/fmt/struct.Formatter.html' title='core::fmt::Formatter'>Formatter</a>) -&gt; <a class='type' href='https://doc.rust-lang.org/nightly/core/fmt/type.Result.html' title='core::fmt::Result'>Result</a></code></h4>
+</div></section>
+    <section id='search' class="content hidden"></section>
+
+    <section class="footer"></section>
+
+    <aside id="help" class="hidden">
+        <div>
+            <h1 class="hidden">Help</h1>
+
+            <div class="shortcuts">
+                <h2>Keyboard Shortcuts</h2>
+
+                <dl>
+                    <dt>?</dt>
+                    <dd>Show this help dialog</dd>
+                    <dt>S</dt>
+                    <dd>Focus the search field</dd>
+                    <dt>&larrb;</dt>
+                    <dd>Move up in search results</dd>
+                    <dt>&rarrb;</dt>
+                    <dd>Move down in search results</dd>
+                    <dt>&#9166;</dt>
+                    <dd>Go to active search result</dd>
+                </dl>
+            </div>
+
+            <div class="infos">
+                <h2>Search Tricks</h2>
+
+                <p>
+                    Prefix searches with a type followed by a colon (e.g.
+                    <code>fn:</code>) to restrict the search to a given type.
+                </p>
+
+                <p>
+                    Accepted types are: <code>fn</code>, <code>mod</code>,
+                    <code>struct</code>, <code>enum</code>,
+                    <code>trait</code>, <code>type</code>, <code>macro</code>,
+                    and <code>const</code>.
+                </p>
+
+                <p>
+                    Search functions by type signature (e.g.
+                    <code>vec -> usize</code> or <code>* -> vec</code>)
+                </p>
+            </div>
+        </div>
+    </aside>
+
+    
+
+    <script>
+        window.rootPath = "../";
+        window.currentCrate = "vk_generator";
+        window.playgroundUrl = "";
+    </script>
+    <script src="../jquery.js"></script>
+    <script src="../main.js"></script>
+    
+    <script defer src="../search-index.js"></script>
+</body>
+</html>

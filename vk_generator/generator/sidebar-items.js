@@ -1,0 +1,1 @@
+initSidebarItems({"struct":[["GenConfig","Configuration options fot the Vulkan generator"]]});
