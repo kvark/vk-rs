@@ -337,6 +337,10 @@ impl VkElType {
             Unknown             => *self = Void
         }
     }
+    
+    fn empty_const() -> VkElType {
+        VkElType::Const(null_str())
+    }
 }
 
 impl fmt::Debug for VkElType {
