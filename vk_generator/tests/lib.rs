@@ -8,7 +8,7 @@ use std::process::Command;
 use std::io::Write;
 use std::str;
 
-use vk_generator::VkVersion;
+use vk_generator::{VkVersion, GenConfig};
 
 #[test]
 fn default_global() {
@@ -17,10 +17,11 @@ fn default_global() {
 
     let mut file = File::create(&Path::new(&out).join("default_global.rs")).unwrap();
     writeln!(file, "fn main() {{}} mod vk {{").unwrap();
-    vk_generator::VkRegistry::new(vk_api::VK_XML).gen_global(&mut file,
-                                                             VkVersion(1, 0), 
-                                                             &["VK_KHR_surface"],
-                                                             Default::default());
+    vk_generator::VkRegistry::new(vk_api::VK_XML)
+        .gen_global(&mut file,
+                    VkVersion(1, 0), 
+                    &["VK_KHR_surface", "VK_EXT_debug_report"],
+                    Default::default());
     writeln!(file, "}}").unwrap();
 
     assert_eq!("", str::from_utf8(&Command::new("rustc").current_dir(&out).arg("default_global.rs").output().unwrap().stderr).unwrap());
@@ -33,11 +34,64 @@ fn default_struct() {
 
     let mut file = File::create(&Path::new(&out).join("default_struct.rs")).unwrap();
     writeln!(file, "fn main() {{}} mod vk {{").unwrap();
-    vk_generator::VkRegistry::new(vk_api::VK_XML).gen_struct(&mut file,
-                                                             VkVersion(1, 0), 
-                                                             &["VK_KHR_surface"],
-                                                             Default::default());
+    vk_generator::VkRegistry::new(vk_api::VK_XML)
+        .gen_struct(&mut file,
+                    VkVersion(1, 0), 
+                    &["VK_KHR_surface", "VK_EXT_debug_report"],
+                    Default::default());
     writeln!(file, "}}").unwrap();
 
     assert_eq!("", str::from_utf8(&Command::new("rustc").current_dir(&out).arg("default_struct.rs").output().unwrap().stderr).unwrap());
+}
+
+#[test]
+fn nondefault_global() {
+    let out = env::var("OUT_DIR").unwrap();
+    DirBuilder::new().recursive(true).create(&out).unwrap();
+
+    let mut file = File::create(&Path::new(&out).join("nondefault_global.rs")).unwrap();
+    writeln!(file, "fn main() {{}} mod vk {{").unwrap();
+    vk_generator::VkRegistry::new(vk_api::VK_XML)
+        .gen_global(&mut file,
+                    VkVersion(1, 0), 
+                    &["VK_KHR_surface", "VK_EXT_debug_report"],
+                    GenConfig::new()
+                        .remove_type_prefix(true)
+                        .remove_vk_result_prefix(false)
+                        .remove_command_prefix(false)
+                        .remove_variant_padding(false)
+                        .remove_bitmask_prefix(false)
+                        .snake_case_commands(false)
+                        .camel_case_variants(false)
+                        .snake_case_members(false)
+                        .wrap_bitmasks(false));
+    writeln!(file, "}}").unwrap();
+
+    assert_eq!("", str::from_utf8(&Command::new("rustc").current_dir(&out).arg("nondefault_global.rs").output().unwrap().stderr).unwrap());
+}
+
+#[test]
+fn nondefault_struct() {
+    let out = env::var("OUT_DIR").unwrap();
+    DirBuilder::new().recursive(true).create(&out).unwrap();
+
+    let mut file = File::create(&Path::new(&out).join("nondefault_struct.rs")).unwrap();
+    writeln!(file, "fn main() {{}} mod vk {{").unwrap();
+    vk_generator::VkRegistry::new(vk_api::VK_XML)
+        .gen_struct(&mut file,
+                    VkVersion(1, 0), 
+                    &["VK_KHR_surface", "VK_EXT_debug_report"],
+                    GenConfig::new()
+                        .remove_type_prefix(true)
+                        .remove_vk_result_prefix(false)
+                        .remove_command_prefix(false)
+                        .remove_variant_padding(false)
+                        .remove_bitmask_prefix(false)
+                        .snake_case_commands(false)
+                        .camel_case_variants(false)
+                        .snake_case_members(false)
+                        .wrap_bitmasks(false));
+    writeln!(file, "}}").unwrap();
+
+    assert_eq!("", str::from_utf8(&Command::new("rustc").current_dir(&out).arg("nondefault_struct.rs").output().unwrap().stderr).unwrap());
 }
