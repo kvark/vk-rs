@@ -189,12 +189,6 @@ impl<'a> GenConfig<'a> {
         self.extern_type_overrides = extern_type_overrides;
         self
     }
-
-    fn modifies_signatures(&self) -> bool {
-        self.remove_command_prefix ||
-        self.snake_case_commands ||
-        self.camel_case_variants
-    }
 }
 
 impl<'a> default::Default for GenConfig<'a> {
@@ -236,13 +230,13 @@ pub struct GenPreproc<'a, 'b> {
     pub registry: &'a VkRegistry<'a>,
     pub config: GenConfig<'b>,
     /// An internal buffer that contains all relevant identifier strings
-    pub string_buffer: Option<String>
+    pub string_buffer: String
 }
 
 impl<'a, 'b> GenPreproc<'a, 'b> {
     fn new(registry: &'a VkRegistry<'a>, version: VkVersion, extensions: &[&str], config: GenConfig<'b>) -> GenPreproc<'a, 'b> {
         let mut gen = GenPreproc {
-            string_buffer: config.modifies_signatures().as_some(String::with_capacity(registry.buffer_cap())),
+            string_buffer: String::with_capacity(registry.buffer_cap()),
             types: HashMap::with_capacity(registry.types().len()),
             type_ord: Vec::with_capacity(registry.types().len()),
             const_types: HashMap::with_capacity(registry.core_consts().len()),
@@ -604,19 +598,18 @@ impl<'a, 'b> GenPreproc<'a, 'b> {
 
     unsafe fn append_char_func<F: Fn(&mut String)>(&mut self, processor: F) -> *const str {
         use std::{slice, str};
-        let string_buffer = self.string_buffer.as_mut().unwrap();
 
-        let prepushcap = string_buffer.capacity();
-        let prepushlen = string_buffer.len();
+        let prepushcap = self.string_buffer.capacity();
+        let prepushlen = self.string_buffer.len();
         // We want to have all of the string in one block of memory in order to save heap allocation time. 
-        processor(string_buffer);
+        processor(&mut self.string_buffer);
 
-        if prepushcap != string_buffer.capacity() {
+        if prepushcap != self.string_buffer.capacity() {
             panic!("Allocation detected in string buffer")
         }
 
-        let ptr = string_buffer.as_ptr().offset(prepushlen as isize);
-        str::from_utf8_unchecked(slice::from_raw_parts(ptr, string_buffer.len()-prepushlen)) as *const str
+        let ptr = self.string_buffer.as_ptr().offset(prepushlen as isize);
+        str::from_utf8_unchecked(slice::from_raw_parts(ptr, self.string_buffer.len()-prepushlen)) as *const str
     }
 }
 
