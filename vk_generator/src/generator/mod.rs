@@ -1023,8 +1023,11 @@ impl<'a> GenTypes<'a> {
         if !self.config.snake_case_members {
             writeln!(write, "#![allow(non_snake_case)]").unwrap();
         }
+        if self.config.wrap_bitmasks {
+            writeln!(write, "use std::ops::*;").unwrap();
+        }
 
-        writeln!(write, "use std::fmt; use std::ops::*; use std::ffi::CStr; use super::*;").unwrap();
+        writeln!(write, "use std::fmt; use std::ffi::CStr; use super::*;").unwrap();
         writeln!(write, "{}", &self.externs).unwrap();
         writeln!(write, "{}", &self.typedefs).unwrap();
         writeln!(write, "{}", &self.consts).unwrap();
@@ -1144,9 +1147,7 @@ impl<'a> VkRegistry<'a> {
 
         writeln!(write, "pub mod cmds {{").unwrap();
         writeln!(write, "#![allow(dead_code)]").unwrap();
-        if preproc.config.snake_case_commands {
-            writeln!(write, "#![allow(non_camel_case_types)]").unwrap();
-        }
+        writeln!(write, "#![allow(non_camel_case_types)]").unwrap();
         if !preproc.config.snake_case_members || !preproc.config.snake_case_commands {
             writeln!(write, "#![allow(non_snake_case)]").unwrap();
         }
