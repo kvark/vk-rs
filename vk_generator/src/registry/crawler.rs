@@ -307,12 +307,14 @@ pub fn crawl<R: Read>(xml_events: Events<R>, registry: &mut VkRegistry) {
                                         "name" => *name = registry.append_str(chars),
                                         "type" => 
                                             if let Some("type") = tag1 {
-                                                params.push(VkElType::Var(registry.append_str(chars)))
+                                                if let Some(&VkElType::Const(_)) = params.last() {
+                                                    params.last_mut().unwrap().set_type(registry.append_str(chars))
+                                                } else {
+                                                    params.push(VkElType::Var(registry.append_str(chars)))
+                                                }
                                             } else if let Some("types") = tag1 {
-                                                if let Some(p) = params.last_mut() {
-                                                    if chars.contains("const") {
-                                                        p.make_const();
-                                                    } else {
+                                                if *ret != VkElType::Unknown {
+                                                    if let Some(p) = params.last_mut() {
                                                         let mut ptr_count = 0;
                                                         // Indicies of array size slice
                                                         let mut indices = (0, 0);
@@ -330,6 +332,10 @@ pub fn crawl<R: Read>(xml_events: Events<R>, registry: &mut VkRegistry) {
                                                         } else if (0, 0) != indices {
                                                             p.make_array(parse_array_index(&chars[indices.0..indices.1]).unwrap().0)
                                                         }
+                                                    }
+                                                    
+                                                    if chars.ends_with("const") {
+                                                        params.push(VkElType::empty_const())
                                                     }
                                                 } else {
                                                     // The type starts 8 chars into the funcpointer, after `typedef`

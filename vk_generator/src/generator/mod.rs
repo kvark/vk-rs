@@ -869,6 +869,13 @@ impl<'a> GenTypes<'a> {
                     let mut typ = processed.const_types.get(name).map(|t| *t).unwrap_or(Unknown);
                     let mut slice_indices = (0, value.len());
 
+                    // Ignore enum variants that have been renamed in the Vulkan specs.
+                    if typ == Unknown &&
+                       name.starts_with("VK_") &&
+                       value.starts_with("VK_") {
+                        continue;
+                    }
+                    
                     for (b, c) in value.char_indices() {
                         match c {
                             ')'                    => (),
@@ -893,12 +900,6 @@ impl<'a> GenTypes<'a> {
                         }
                     }
 
-                    if typ == Unknown &&
-                       &name[0..3]  == "VK_" &&
-                       &value[0..3] == "VK_" {
-                        typ = LegacyEnum;
-                    }
-
                     let sliced_value = &value[slice_indices.0..slice_indices.1];
                     match typ {
                         Unsigned   => write!(consts, "pub const {}: uint32_t = ", name),
@@ -907,7 +908,6 @@ impl<'a> GenTypes<'a> {
                         USize      => write!(consts, "pub const {}: size_t = ", name),
                         Float      => writeln!(consts, "pub const {}: c_float = {};", name, sliced_value),
                         Str        => writeln!(consts, "pub const {}: &'static str = {};", name, sliced_value),
-                        LegacyEnum => Ok(()),
                         Unknown    => panic!("Unknown const type")
                     }.unwrap();
 
@@ -1050,8 +1050,6 @@ pub enum ConstType {
     USize,
     /// A string
     Str,
-    /// An enum variant that was renamed in the Vulkan specs. The default generators ignore these.
-    LegacyEnum,
     Unknown
 }
 
