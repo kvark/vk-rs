@@ -50,6 +50,7 @@ fn nondefault_global() {
     DirBuilder::new().recursive(true).create(&out).unwrap();
 
     let mut file = File::create(&Path::new(&out).join("nondefault_global.rs")).unwrap();
+    writeln!(file, "{}", include_str!("./libc_dummy.rs")).unwrap();
     writeln!(file, "fn main() {{}} mod vk {{").unwrap();
     vk_generator::VkRegistry::new(vk_api::VK_XML)
         .gen_global(&mut file,
@@ -64,7 +65,8 @@ fn nondefault_global() {
                         .snake_case_commands(false)
                         .camel_case_variants(false)
                         .snake_case_members(false)
-                        .wrap_bitmasks(false));
+                        .wrap_bitmasks(false)
+                        .use_libc_types(true));
     writeln!(file, "}}").unwrap();
 
     assert_eq!("", str::from_utf8(&Command::new("rustc").current_dir(&out).arg("nondefault_global.rs").output().unwrap().stderr).unwrap());
@@ -76,6 +78,7 @@ fn nondefault_struct() {
     DirBuilder::new().recursive(true).create(&out).unwrap();
 
     let mut file = File::create(&Path::new(&out).join("nondefault_struct.rs")).unwrap();
+    writeln!(file, "{}", include_str!("./libc_dummy.rs")).unwrap();
     writeln!(file, "fn main() {{}} mod vk {{").unwrap();
     vk_generator::VkRegistry::new(vk_api::VK_XML)
         .gen_struct(&mut file,
@@ -90,7 +93,8 @@ fn nondefault_struct() {
                         .snake_case_commands(false)
                         .camel_case_variants(false)
                         .snake_case_members(false)
-                        .wrap_bitmasks(false));
+                        .wrap_bitmasks(false)
+                        .use_libc_types(true));
     writeln!(file, "}}").unwrap();
 
     assert_eq!("", str::from_utf8(&Command::new("rustc").current_dir(&out).arg("nondefault_struct.rs").output().unwrap().stderr).unwrap());
