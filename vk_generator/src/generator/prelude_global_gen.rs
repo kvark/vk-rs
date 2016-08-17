@@ -1,5 +1,5 @@
 macro_rules! vk_functions {
-    ($($raw_name: expr, $name: ident ($($param_name: ident: $param: ty),*,) -> $ret: ty);+;) => {
+    ($($raw_name: expr, $name: ident ($($param_name: ident: $param: ty),*,) -> $ret: ty;)+) => {
         $(
             pub unsafe extern "system" fn $name (
                 $($param_name: $param),*
@@ -10,7 +10,10 @@ macro_rules! vk_functions {
             }
 
             pub mod $name {
+
                 use super::super::*;
+                #[allow(unused_imports)]
+                use super::super::libc_reexports::*;
                 pub const RAW_NAME: &'static str = $raw_name;
                 pub static mut fn_ptr: *const () = unloaded_function_panic as *const ();
                 #[doc(hidden)]

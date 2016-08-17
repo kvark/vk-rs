@@ -651,7 +651,8 @@ pub struct GenTypes<'a> {
     typedefs:     String,
     funcpointers: String,
     consts:       String,
-    externs:      String
+    externs:      String,
+    libc_reexports: String
 }
 
 impl<'a> GenTypes<'a> {
@@ -667,7 +668,8 @@ impl<'a> GenTypes<'a> {
             typedefs:     String::with_capacity(2usize.pow(13)),
             funcpointers: String::with_capacity(2usize.pow(11)),
             consts:       String::with_capacity(2usize.pow(10)),
-            externs:      String::with_capacity(2usize.pow(10))
+            externs:      String::with_capacity(2usize.pow(10)),
+            libc_reexports: String::new()
         };
 
         // Iterate over the types in an order defined by which types were loaded first
@@ -924,7 +926,7 @@ impl<'a> GenTypes<'a> {
                         writeln!(externs, "pub type {} = ::{};", name, over.1).unwrap();
                     } else if "vk_platform" == requires {
                         if gen_types.config.use_libc_types {
-                            writeln!(externs, "use libc::{};", name).unwrap();
+                            writeln!(&mut gen_types.libc_reexports, "pub use libc::{};", name).unwrap();
                         } else {
                             let typ =
                                 match name {
@@ -1011,6 +1013,11 @@ impl<'a> GenTypes<'a> {
 
     pub fn write_types<W: Write>(&self, write: &mut W) {
         writeln!(write, "{}", include_str!("defines.rs")).unwrap();
+
+        writeln!(write, "mod libc_reexports {{").unwrap();
+        writeln!(write, "{}", &self.libc_reexports).unwrap();
+        writeln!(write, "}}").unwrap();
+        
         writeln!(write, "pub mod types {{").unwrap();
         writeln!(write, "#![allow(non_camel_case_types, dead_code)]").unwrap();
         if !self.config.snake_case_members {
@@ -1020,7 +1027,7 @@ impl<'a> GenTypes<'a> {
             writeln!(write, "use std::ops::*;").unwrap();
         }
 
-        writeln!(write, "use std::fmt; use std::ffi::CStr; use super::*;").unwrap();
+        writeln!(write, "use std::fmt; use std::ffi::CStr; use super::*; #[allow(unused_imports)]use super::libc_reexports::*;").unwrap();
         writeln!(write, "{}", &self.externs).unwrap();
         writeln!(write, "{}", &self.typedefs).unwrap();
         writeln!(write, "{}", &self.consts).unwrap();
@@ -1081,17 +1088,18 @@ impl<'a> VkRegistry<'a> {
 
         writeln!(write, "{}", include_str!("prelude_common.rs")).unwrap();
         writeln!(write, "{}", include_str!("prelude_global_gen.rs")).unwrap();
-        GenTypes::new(&preproc).write_types(write);
+        let gen_types = GenTypes::new(&preproc);
+        gen_types.write_types(write);
 
         writeln!(write, "pub mod cmds {{").unwrap();
         writeln!(write, "#![allow(dead_code)]").unwrap();
         if !preproc.config.snake_case_commands || !preproc.config.snake_case_members {
             writeln!(write, "#![allow(non_snake_case)]").unwrap();
         }
-        writeln!(write, "use super::*;").unwrap();
+        writeln!(write, "use super::*; #[allow(unused_imports)] use super::libc_reexports::*;").unwrap();
 
         writeln!(write, "vk_functions!{{").unwrap();
-        for (c, r) in preproc.commands.iter().zip(preproc.commands_raw.into_iter()) {unsafe{
+        for (c, r) in preproc.commands.iter().zip(preproc.commands_raw.iter()) {unsafe{
             writeln!(write, "    \"{}\", {}(", r, &*c.name).unwrap();
             for p in c.params.iter() {
                 write!(write, "        {}: ", &*p.name).unwrap();
@@ -1136,7 +1144,8 @@ impl<'a> VkRegistry<'a> {
 
         writeln!(write, "{}", include_str!("prelude_common.rs")).unwrap();
         writeln!(write, "{}", include_str!("prelude_struct_gen.rs")).unwrap();
-        GenTypes::new(&preproc).write_types(write);
+        let gen_types = GenTypes::new(&preproc);
+        gen_types.write_types(write);
 
         writeln!(write, "pub mod cmds {{").unwrap();
         writeln!(write, "#![allow(dead_code)]").unwrap();
@@ -1144,10 +1153,10 @@ impl<'a> VkRegistry<'a> {
         if !preproc.config.snake_case_members || !preproc.config.snake_case_commands {
             writeln!(write, "#![allow(non_snake_case)]").unwrap();
         }
-        writeln!(write, "use super::*;").unwrap();
+        writeln!(write, "use super::*; #[allow(unused_imports)] use super::libc_reexports::*;").unwrap();
 
         writeln!(write, "vk_struct_bindings!{{").unwrap();
-        for (c, r) in preproc.commands.iter().zip(preproc.commands_raw.into_iter()) {unsafe{
+        for (c, r) in preproc.commands.iter().zip(preproc.commands_raw.iter()) {unsafe{
             writeln!(write, "    \"{}\", {}(", r, &*c.name).unwrap();
             for p in c.params.iter() {
                 write!(write, "        {}: ", &*p.name).unwrap();
