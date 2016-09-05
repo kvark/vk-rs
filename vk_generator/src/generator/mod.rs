@@ -20,6 +20,7 @@ pub struct GenConfig<'a> {
     pub camel_case_variants: bool,
     pub snake_case_members: bool,
     pub debug_c_strings: bool,
+    pub use_native_unions: bool,
 
     pub wrap_bitmasks: bool,
     pub use_libc_types: bool,
@@ -134,6 +135,11 @@ impl<'a> GenConfig<'a> {
         self
     }
 
+    pub fn use_native_unions(mut self, use_native_unions: bool) -> GenConfig<'a> {
+        self.use_native_unions = use_native_unions;
+        self
+    }
+
     /// Whether or not to wrap bitmasks with a set of convenience functions similar to the 
     /// [bitflags](https://doc.rust-lang.org/bitflags/bitflags/macro.bitflags!.html) crate.
     ///
@@ -203,6 +209,7 @@ impl<'a> default::Default for GenConfig<'a> {
             camel_case_variants: true,
             snake_case_members: true,
             debug_c_strings: true,
+            use_native_unions: false,
 
             wrap_bitmasks: true,
             use_libc_types: false,
@@ -768,19 +775,88 @@ impl<'a> GenTypes<'a> {
                     }
                 }
 
+                // UPDATE 9/5/16: Unions finally have an unstable implementation! Proper unions can now be
+                // auto-generated easily, albeit only on the nightly channel. Proper union generation will not be
+                // enabled by default until they become stable. Until then, they will be controlled by the
+                // use_native_unions flag in `GenConfig`.
+                // 
+                // Original Comment:
                 // Unions are currently a pain in the ass to do, as Rust does not have a stable implementation.     |
                 // What they do have, however, is an approved RFC that is currently being implemented. Until those  |
                 // become reality the unions currently present in Vulkan are simply going to be hard-coded into the |
                 // generator with a fairly shitty, although functional, implementation.                             |
                 Union{name, ref variants} => unsafe {
                     let unions = &mut gen_types.unions;
-                    if (&*name).contains("ClearColorValue") {
-                        writeln!(unions, include_str!("./hardcoded/union_ClearColorValue.rs"), &*name)
-                    } else if (&*name).contains("ClearValue") {
-                        writeln!(unions, include_str!("./hardcoded/union_ClearValue.rs"), &*name,
-                                                                                          &*variants[0].field_type.type_ptr().unwrap(),
-                                                                                          &*variants[1].field_type.type_ptr().unwrap())
-                    } else {panic!("Unexpected Union")}.unwrap()
+                    if processed.config.use_native_unions {
+                        // Create base union type
+                        writeln!(unions, "#[repr(C)]").unwrap();
+                        writeln!(unions, "pub union {} {{", &*name).unwrap();
+
+                        for v in variants {
+                            write!(unions, "    pub {}: ", &*v.field_name).unwrap();
+
+                            match v.field_type {
+                                Var(ident) => writeln!(unions, "{},", &*ident),
+                                ConstPtr(ident, count) => {
+                                    for _ in 0..count {
+                                        write!(unions, "*const ").unwrap();
+                                    }
+                                    writeln!(unions, "{},", &*ident)
+                                }
+                                MutPtr(ident, count) => {
+                                    for _ in 0..count {
+                                        write!(unions, "*mut ").unwrap();
+                                    }
+                                    writeln!(unions, "{},", &*ident)
+                                }
+                                MutArray(ident, count)    => writeln!(unions, "[{}; {}],", &*ident, count),
+                                MutArrayEnum(ident, cons) => writeln!(unions, "[{}; {}],", &*ident, &*cons),
+
+                                ConstArray(_, _)      |
+                                ConstArrayEnum(_, _) => panic!("Unexpected const array in union"),
+                                Const(_)             => panic!("Unexpected const {}", &*name),
+                                Void                 => panic!("Unexpected void"),
+                                Unknown              => panic!("Unexpected unknown")
+                            }.unwrap();
+                        }
+                        writeln!(unions, "}}\n").unwrap();
+
+                        // Unions derives don't work at the time of this writing, so we have to manually implement
+                        // it manually. Luckily, the manual implementation is trivial.
+                        writeln!(unions, include_str!("./union_cloned.rs"), &*name).unwrap();
+
+                        // Write `Debug` implementation
+                        writeln!(unions, include_str!("./custom_impl_debug.rs"), &*name).unwrap();
+                        for v in variants {
+                            write!(unions, "           ").unwrap();
+                            let n = &* v.field_name;
+
+                            if let Some(&FuncPointer{..}) = processed.registry.types().get(&*v.field_type.type_ptr().unwrap()) {
+                                writeln!(unions, ".field(\"{0}\", &(self.{0} as *const ()))", n).unwrap();
+                            } else {
+                                match v.field_type {
+                                    MutArray(t, _)        |
+                                    ConstArray(t, _)      |
+                                    MutArrayEnum(t, _)    |
+                                    ConstArrayEnum(t, _) => 
+                                        if gen_types.config.debug_c_strings && "c_char" == &*t {
+                                            writeln!(unions, ".field(\"{0}\", &unsafe{{ CStr::from_ptr(&self.{0}[0]) }})", n)
+                                        } else {writeln!(unions, ".field(\"{0}\", unsafe{{ &&self.{0}[..] }})", n)},
+                                    _                    => writeln!(unions, ".field(\"{0}\", unsafe{{ &self.{0} }})", n)
+                                }.unwrap()
+                            }
+                        }
+                        write!(unions, "            .finish()\n    }}\n}}\n\n").unwrap();
+
+                    } else {
+                        if (&*name).contains("ClearColorValue") {
+                            writeln!(unions, include_str!("./hardcoded/union_ClearColorValue.rs"), &*name)
+                        } else if (&*name).contains("ClearValue") {
+                            writeln!(unions, include_str!("./hardcoded/union_ClearValue.rs"), &*name,
+                                                                                              &*variants[0].field_type.type_ptr().unwrap(),
+                                                                                              &*variants[1].field_type.type_ptr().unwrap())
+                        } else {panic!("Unexpected Union")}.unwrap()
+                    }
                 },
 
                 // Generate enum bindings
