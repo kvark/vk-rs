@@ -23,4 +23,4 @@ xml-rs = "0.3.0"
 boolinator = "0.1.0"
 
 [dev-dependencies]
-vk_api = "1.0"
+vk_api = {path = "../vk_api", version="1.0"}
