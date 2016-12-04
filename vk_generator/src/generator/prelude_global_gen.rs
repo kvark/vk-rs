@@ -6,7 +6,7 @@ macro_rules! vk_functions {
                 ) -> $ret {
                 use std::mem;
 
-                mem::transmute::<_, $name::FnType>($name::fn_ptr)($($param_name),*)
+                mem::transmute::<_, $name::FnType>($name::FN_PTR)($($param_name),*)
             }
 
             pub mod $name {
@@ -15,12 +15,12 @@ macro_rules! vk_functions {
                 #[allow(unused_imports)]
                 use super::super::libc_reexports::*;
                 pub const RAW_NAME: &'static str = $raw_name;
-                pub static mut fn_ptr: *const () = unloaded_function_panic as *const ();
+                pub static mut FN_PTR: *const () = unloaded_function_panic as *const ();
                 #[doc(hidden)]
                 pub type FnType = unsafe extern "system" fn($($param),*) -> $ret;
 
                 pub fn is_loaded() -> bool {
-                    unsafe{ fn_ptr == unloaded_function_panic as *const () }
+                    unsafe{ FN_PTR == unloaded_function_panic as *const () }
                 }
             }
         )+
@@ -33,8 +33,8 @@ macro_rules! vk_functions {
             $(
                 fn_buf = load_fn($raw_name);
                 if ptr::null() != fn_buf {
-                    $name::fn_ptr = fn_buf;
-                } else if $name::fn_ptr != unloaded_function_panic as *const () {
+                    $name::FN_PTR = fn_buf;
+                } else if $name::FN_PTR != unloaded_function_panic as *const () {
                     unloaded_fns.push($raw_name)
                 }
             )+
