@@ -5,6 +5,7 @@ authors = ["Osspial <osspial@gmail.com>"]
 
 description = "The Vulkan API XML exposed as a byte string constant"
 repository = "https://github.com/Osspial/vk-rs"
+documentation = "https://docs.rs/vk_api/"
 readme = "README.md"
 
 keywords = ["vulkan", "khronos"]

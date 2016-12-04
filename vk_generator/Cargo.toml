@@ -5,7 +5,8 @@ authors = ["Osspial <osspial@gmail.com>"]
 
 description = "Generate Rust bindings to the Vulkan API"
 repository = "https://github.com/Osspial/vk-rs"
-documentation = "http://osspial.github.io/vk-rs/vk_generator/index.html"
+documentation = "https://docs.rs/vk_generator/"
+readme = "./README.md"
 
 keywords = ["vulkan", "khronos"]
 license = "MIT"

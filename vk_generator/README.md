@@ -1,7 +1,7 @@
 # vk_generator [![Version](https://img.shields.io/crates/v/vk_generator.svg)](https://crates.io/crates/vk_generator)
 Rust binding generator for the [Vulkan API](https://www.khronos.org/vulkan/).
 
-## [Documentation](http://osspial.github.io/vk-rs/vk_generator/index.html)
+## [Documentation](https://docs.rs/vk_generator/)
 
 ## Custom Generators
 `vk_generator` supports the usage of custom generators, which can be implemented as traits on the
