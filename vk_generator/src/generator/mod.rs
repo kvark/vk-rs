@@ -135,6 +135,10 @@ impl<'a> GenConfig<'a> {
         self
     }
 
+    /// Whether or not to use the unstable `union` keyword to create native untagged unions.
+    /// Currently relies on the `untagged_unions` feature.
+    ///
+    /// Defaults to `false`.
     pub fn use_native_unions(mut self, use_native_unions: bool) -> GenConfig<'a> {
         self.use_native_unions = use_native_unions;
         self
