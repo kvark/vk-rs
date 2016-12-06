@@ -34,7 +34,7 @@ macro_rules! vk_functions {
                 fn_buf = load_fn($raw_name);
                 if ptr::null() != fn_buf {
                     $name::FN_PTR = fn_buf;
-                } else if $name::FN_PTR != unloaded_function_panic as *const () {
+                } else if $name::FN_PTR == unloaded_function_panic as *const () {
                     unloaded_fns.push($raw_name)
                 }
             )+
