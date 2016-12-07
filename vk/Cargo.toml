@@ -1,0 +1,15 @@
+[package]
+authors = ["Osspial <osspial@gmail.com>"]
+name = "vk"
+version = "0.1.0"
+build = "build.rs"
+
+[dependencies]
+libc = "0.2"
+
+[build-dependencies]
+vk_api = "1.0"
+vk_generator = "0.2.0"
+
+[features]
+native_unions = []
