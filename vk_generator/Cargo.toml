@@ -1,6 +1,6 @@
 [package]
 name = "vk_generator"
-version = "0.2.0"
+version = "0.2.1"
 authors = ["Osspial <osspial@gmail.com>"]
 
 description = "Generate Rust bindings to the Vulkan API"
