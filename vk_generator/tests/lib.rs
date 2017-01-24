@@ -3,7 +3,6 @@ extern crate vk_api;
 
 use std::path::Path;
 use std::fs::{File, DirBuilder};
-use std::env;
 use std::process::Command;
 use std::io::Write;
 use std::str;
@@ -12,7 +11,7 @@ use vk_generator::{VkVersion, GenConfig};
 
 #[test]
 fn default_global() {
-    let out = env::var("OUT_DIR").unwrap();
+    let out = env!("OUT_DIR");
     DirBuilder::new().recursive(true).create(&out).unwrap();
 
     let mut file = File::create(&Path::new(&out).join("default_global.rs")).unwrap();
@@ -29,7 +28,7 @@ fn default_global() {
 
 #[test]
 fn default_struct() {
-    let out = env::var("OUT_DIR").unwrap();
+    let out = env!("OUT_DIR");
     DirBuilder::new().recursive(true).create(&out).unwrap();
 
     let mut file = File::create(&Path::new(&out).join("default_struct.rs")).unwrap();
@@ -46,7 +45,7 @@ fn default_struct() {
 
 #[test]
 fn nondefault_global() {
-    let out = env::var("OUT_DIR").unwrap();
+    let out = env!("OUT_DIR");
     DirBuilder::new().recursive(true).create(&out).unwrap();
 
     let mut file = File::create(&Path::new(&out).join("nondefault_global.rs")).unwrap();
@@ -74,7 +73,7 @@ fn nondefault_global() {
 
 #[test]
 fn nondefault_struct() {
-    let out = env::var("OUT_DIR").unwrap();
+    let out = env!("OUT_DIR");
     DirBuilder::new().recursive(true).create(&out).unwrap();
 
     let mut file = File::create(&Path::new(&out).join("nondefault_struct.rs")).unwrap();
